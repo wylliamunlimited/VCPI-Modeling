@@ -1,0 +1,21 @@
+# Never commit data — it's huge and token-gated. Anyone can re-download it.
+data/raw/
+data/backup/
+*.parquet
+*.npy
+*.npz
+*.pt
+*.pkl
+
+# Secrets
+.env
+
+# Python junk
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+.venv/
+*.egg-info/
+
+# OS junk
+.DS_Store
