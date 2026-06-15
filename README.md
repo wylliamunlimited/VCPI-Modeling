@@ -69,8 +69,20 @@ sql> SELECT user_compound_id, COUNT(*) AS n      -- replicates per compound
 ```
 
 Tables available remotely: `metadata`, `chemistry` (join on `compound`).
-The gene **counts** matrix is *not* queryable remotely — it requires a full
-download (not yet implemented; see roadmap).
+The gene **counts** matrix is *not* queryable remotely — it requires the full
+download below.
+
+## Downloading the data
+
+Pulls the 3 training releases + the scoring weights into `data/raw/`
+(~1.4 GB counts, ~358 MB weights; peak RAM ~22 GB, a few minutes):
+
+```bash
+uv run --env-file .env python src/vcpi_ml/download.py
+```
+
+Produces `train_counts.parquet`, `train_metadata.parquet`,
+`train_chemistry.parquet`, `weights.parquet` in `data/raw/`.
 
 ## Repo layout
 
@@ -78,20 +90,18 @@ download (not yet implemented; see roadmap).
 vcpi-ml/
 ├── pyproject.toml          # deps + package metadata (src layout)
 ├── src/vcpi_ml/
-│   └── sqlshell.py         # remote SQL REPL for exploration  ✅
+│   ├── sqlshell.py         # remote SQL REPL for exploration  ✅
+│   └── download.py         # data acquisition → data/raw/      ✅
 ├── notebooks/              # exploration & modeling notebooks (empty so far)
-├── data/raw/               # downloaded parquet, gitignored (empty so far)
+├── data/raw/               # downloaded parquet, gitignored (populated ✅)
 └── .env                    # TVC_TOKEN (gitignored)
 ```
 
 ## Roadmap
 
 A difficulty ladder — each rung runnable, each teaches one concept.
-**Done:** remote SQL exploration (`sqlshell.py`).
-
-**Next — data acquisition**
-- `download.py`: pull the 3 training releases + scoring weights into `data/raw/`
-  (~1.4 GB counts, ~358 MB weights; peak RAM ~22 GB).
+**Done:** remote SQL exploration (`sqlshell.py`), data acquisition
+(`download.py` → all four parquet files in `data/raw/`).
 
 **Track A — the bio model**
 1. Load & look at the data (exploration)
