@@ -30,7 +30,7 @@ class PerGeneMean:
         self.mean = Y.mean(axis=0)
         return self
 
-    def predict(self, X: pd.DataFrame):
+    def predict(self, X: pd.DataFrame) -> pd.DataFrame:
         """Broadcast the stored mean to one identical row per compound in X.
 
         X is the compound IDs to predict for; returns a wide
