@@ -32,3 +32,8 @@ packages = ["src/vcpi_ml"]
 # Hatchling blocks these by default as a safety check; we opt in explicitly.
 [tool.hatch.metadata]
 allow-direct-references = true
+
+[dependency-groups]
+dev = [
+    "ruff>=0.15.18",
+]
