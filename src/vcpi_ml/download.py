@@ -59,7 +59,10 @@ def select_kept_count_columns(
     down to the samples that survived the contest-condition filter.
     """
     keep = set(sample_metadata["sequenced_id"].cast(pl.Utf8).to_list())
-    cols = ["gene_id", *[c for c in gene_expression.columns if c != "gene_id" and c in keep]]
+    cols = [
+        "gene_id",
+        *[c for c in gene_expression.columns if c != "gene_id" and c in keep],
+    ]
     return gene_expression.select(cols)
 
 

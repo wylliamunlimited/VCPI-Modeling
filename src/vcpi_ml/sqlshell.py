@@ -7,19 +7,21 @@ Run Command:
 
 import vcpi
 
+
 def main():
 
     job = None
 
-    print("= = = = = = = = = = VCPI SQL SHELL (Ctrl-D or 'quit' to exit.) = = = = = = = = = =")
+    print(
+        "= = = = = = = = = = VCPI SQL SHELL (Ctrl-D or 'quit' to exit.) = = = = = = = = = ="
+    )
 
     while True:
-
         try:
             sql = input("sql> ").strip()
         except EOFError:
             break
-        
+
         if not sql or sql.lower() in {"quit", "exit"}:
             print("= = = = = = = Shutting down = = = = = = =")
             break
@@ -29,6 +31,7 @@ def main():
             print(df)
         except Exception as e:
             print("ERROR: ", e)
+
 
 if __name__ == "__main__":
     main()

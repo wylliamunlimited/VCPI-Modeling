@@ -19,10 +19,8 @@ meaningless vs. the leaderboard.
 
 import pandas as pd
 
-from vcpi_prediction_contest import (
-    score_compounds,
-    aggregate_leaderboards
-)
+from vcpi_prediction_contest import score_compounds, aggregate_leaderboards
+
 
 def wide_to_long(df: pd.DataFrame, value_col: str) -> pd.DataFrame:
     """Reshape a wide expression matrix into the scorer's long format.
@@ -49,11 +47,16 @@ def wide_to_long(df: pd.DataFrame, value_col: str) -> pd.DataFrame:
 
     df = df.reset_index(names="compound")
     df = df.melt(id_vars="compound", var_name="gene_id", value_name=value_col)
-    df["compound"], df["gene_id"] = df["compound"].astype(str), df["gene_id"].astype(str)
+    df["compound"], df["gene_id"] = (
+        df["compound"].astype(str),
+        df["gene_id"].astype(str),
+    )
     return df
 
 
-def evaluate(truth: pd.DataFrame, pred: pd.DataFrame, genes: list[str], weights: pd.DataFrame) -> float:
+def evaluate(
+    truth: pd.DataFrame, pred: pd.DataFrame, genes: list[str], weights: pd.DataFrame
+) -> float:
     """Score predictions against truth with the contest's weighted MSE.
 
     Wraps the two contest calls (score_compounds → aggregate_leaderboards)
@@ -77,9 +80,6 @@ def evaluate(truth: pd.DataFrame, pred: pd.DataFrame, genes: list[str], weights:
     The mean weighted-MSE across compounds (lower is better).
     """
 
-    per_compound = score_compounds(
-        truth, pred,
-        gene_filter=genes, weights=weights
-    )
+    per_compound = score_compounds(truth, pred, gene_filter=genes, weights=weights)
     board = aggregate_leaderboards(per_compound=per_compound)
     return board["wmse_mean"]

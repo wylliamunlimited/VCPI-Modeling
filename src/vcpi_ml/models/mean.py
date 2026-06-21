@@ -37,7 +37,7 @@ class PerGeneMean:
         (len(X) x genes) matrix indexed by those IDs.
         """
         return pd.DataFrame(
-                np.tile(self.mean.values, (len(X), 1)),   # (N × genes), every row = mean
-                index=X,                                   # val compound IDs
-                columns=self.mean.index,                   # gene_ids
-            )
+            np.tile(self.mean.values, (len(X), 1)),  # (N × genes), every row = mean
+            index=X,  # val compound IDs
+            columns=self.mean.index,  # gene_ids
+        )

@@ -18,6 +18,7 @@ import numpy as np
 import pandas as pd
 from sklearn.linear_model import Ridge
 
+
 class RidgeModel:
     """Multi-output Ridge over Morgan fingerprints (the rung-3 model)."""
 
@@ -31,8 +32,8 @@ class RidgeModel:
         Rows of X and Y must line up by compound. Returns self for chaining.
         """
         self.model.fit(
-            X=X, ## Morgan Fingerprint
-            y=Y ## Gene Expression
+            X=X,  ## Morgan Fingerprint
+            y=Y,  ## Gene Expression
         )
         return self
 
@@ -43,8 +44,8 @@ class RidgeModel:
         (index=compound ids, columns=gene order) for scoring.
         """
         if not hasattr(self.model, "coef_"):
-            raise ValueError("Model not trained - call RidgeModel.fit() before predict()")
+            raise ValueError(
+                "Model not trained - call RidgeModel.fit() before predict()"
+            )
 
-        return self.model.predict(
-            X=X
-        )
+        return self.model.predict(X=X)
