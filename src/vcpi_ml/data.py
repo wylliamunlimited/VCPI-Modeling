@@ -37,3 +37,13 @@ def split_compounds(metadata, n_val=200, seed=0) -> tuple[np.ndarray, np.ndarray
     compounds = np.asarray(metadata.loc[~metadata["is_control"], "user_compound_id"].unique())
     train_data, test_data = train_test_split(compounds, test_size=n_val, random_state=seed)
     return train_data, test_data
+
+def load_weights() -> pd.DataFrame:
+    """Mejia scoring weights: (genes x compounds), gene_id index.
+
+    Reads the local cache download.py saved (== the contest's
+    load_weights_matrix() output), so no re-fetch is needed. Each compound
+    column sums to ~1.0; pass this to evaluation.evaluate() as the weights
+    that make the wMSE match the leaderboard.
+    """
+    return pd.read_parquet(DATA / "weights.parquet")
