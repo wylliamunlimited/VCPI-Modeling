@@ -23,7 +23,9 @@ per-gene expression values out.
 - **Metric:** weighted MSE (`wMSE`), lower is better. The per-(compound, gene)
   weights reward predicting each drug's *distinctive* expression changes, not
   the genes that barely move. (Baseline: predicting every gene's training-set
-  average scores ~0.507 — that's the bar to beat.)
+  average. The contest documents ~0.507 but never published its 200-compound
+  split, so the reproducible bar here is **0.6119** on a fixed seed-0 split —
+  verified identical to the contest's own per-gene-mean baseline to 0.0.)
 
 ### How the data connects
 
@@ -84,15 +86,34 @@ uv run --env-file .env python src/vcpi_ml/download.py
 Produces `train_counts.parquet`, `train_metadata.parquet`,
 `train_chemistry.parquet`, `weights.parquet` in `data/raw/`.
 
+## Running a model
+
+Each experiment composes the library layers into one runnable script:
+
+```bash
+uv run python src/vcpi_ml/experiments/baseline.py   # per-gene mean → ~0.6119 wMSE
+```
+
+The pipeline is `data → expression → model(fit/predict) → evaluation`. Every
+layer is verified against the contest package (expression == official to 0.0;
+the full baseline == the contest's own per-gene-mean to 0.0).
+
 ## Repo layout
 
 ```
 vcpi-ml/
 ├── pyproject.toml          # deps + package metadata (src layout)
 ├── src/vcpi_ml/
-│   ├── sqlshell.py         # remote SQL REPL for exploration  ✅
-│   └── download.py         # data acquisition → data/raw/      ✅
-├── notebooks/              # exploration & modeling notebooks (empty so far)
+│   ├── sqlshell.py         # remote SQL REPL for exploration         ✅
+│   ├── download.py         # data acquisition → data/raw/            ✅
+│   ├── data.py             # read-side loaders + compound split      ✅
+│   ├── expression.py       # counts → log2(CPM+1) target Y           ✅
+│   ├── evaluation.py       # wide→long reshape + wMSE scorer wrapper  ✅
+│   ├── features.py         # SMILES → Morgan fingerprint X            ✅
+│   ├── models/
+│   │   └── mean.py         # per-gene-mean baseline (fit/predict)     ✅
+│   └── experiments/
+│       └── baseline.py     # driver: runs the baseline end to end    ✅
 ├── data/raw/               # downloaded parquet, gitignored (populated ✅)
 └── .env                    # TVC_TOKEN (gitignored)
 ```
@@ -100,20 +121,18 @@ vcpi-ml/
 ## Roadmap
 
 A difficulty ladder — each rung runnable, each teaches one concept.
-**Done:** remote SQL exploration (`sqlshell.py`), data acquisition
-(`download.py` → all four parquet files in `data/raw/`).
 
-**Track A — the bio model**
-1. Load & look at the data (exploration)
-2. Dumbest baseline: per-gene mean of train → score it (~0.507)
-3. SMILES → Morgan fingerprint → Ridge regression (first real model)
-4. Plain MLP in PyTorch (first neural net)
+**Track A — the bio model** (every rung scored on the same seed-0 split vs **0.6119**)
+1. ✅ Load & look at the data (exploration, download)
+2. ✅ Dumbest baseline: per-gene mean of train → **0.6119** wMSE (the floor)
+3. 🔨 SMILES → Morgan fingerprint → Ridge regression (first chemistry-aware model)
+4. ⬜ Plain MLP in PyTorch (first neural net)
 
 **Track B — attention from scratch**
-5. Hand-write self-attention (Q/K/V + softmax) on a toy tensor
-6. Tiny char-level transformer over SMILES strings
-7. Understand ChemBERTa as a frozen feature extractor
+5. ⬜ Hand-write self-attention (Q/K/V + softmax) on a toy tensor
+6. ⬜ Tiny char-level transformer over SMILES strings
+7. ⬜ Understand ChemBERTa as a frozen feature extractor
 
-Scoring will use the contest package's `score_compounds` / `load_gene_filter` /
-`load_weights_matrix`; submissions are a parquet of
+Scoring uses the contest package's `score_compounds` / `load_gene_filter` /
+`load_weights_matrix` (wrapped in `evaluation.py`); submissions are a parquet of
 `(compound, gene_id, predicted_expression)` rows.

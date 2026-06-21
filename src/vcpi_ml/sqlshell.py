@@ -6,7 +6,6 @@ Run Command:
 `uv run --env-file .env python src/vcpi_ml/sqlshell.py`"""
 
 import vcpi
-import polars as pl
 
 def main():
 
