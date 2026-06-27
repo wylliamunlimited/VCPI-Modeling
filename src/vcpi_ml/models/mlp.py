@@ -52,7 +52,8 @@ class MLPModel():
         n = X.shape[0]
         self.history = []
 
-        for ep in tqdm(range(epoch)):
+        pbar = tqdm(range(epoch))
+        for ep in pbar:
             perm = torch.randperm(n, device=self.device)
             epoch_loss, n_batch = 0.0, 0
             for start in range(0, n, batch):
@@ -66,6 +67,7 @@ class MLPModel():
                 loss.backward()
                 self.optimizer.step()
             self.history.append(epoch_loss / n_batch)
+            pbar.set_postfix(loss=f"{self.history[-1]:.4f}")
 
         return self
 

@@ -24,11 +24,11 @@ def pipeline(
     batch_size: int = 256, epoch: int = 2048, weight_decay: float = 0.0
     ):
 
-    print(f"===== Initializing MLP Model (lr = {lr}) ======")
+    params = f"lr={lr}, epoch={epoch}, batch={batch_size}, wd={weight_decay}"
+    print(f"===== Training MLP ({params}) =====")
     model = MLPModel(lr=lr, weight_decay=weight_decay)
     model.fit(X=X_train, Y=Y_train, epoch=epoch, batch=batch_size)
 
-    print(f"===== Evaluating Model (lr = {lr}) =====")
     pred = model.predict(X=X_val)
     pred = pd.DataFrame(pred, index=Y_val.index, columns=Y_train.columns)
     pred, truth = (
@@ -36,7 +36,7 @@ def pipeline(
         wide_to_long(Y_val, value_col="expression"),
     )
     score = evaluate(truth, pred, genes=list(genes), weights=weights)
-    print(f"\tPrediction Score (lr = {lr}): {score}")
+    print(f"\t{params} -> wMSE={score:.4f} (train MSE={model.history[-1]:.4f})")
     print()
 
 
