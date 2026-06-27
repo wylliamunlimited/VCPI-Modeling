@@ -107,10 +107,17 @@ the full baseline == the contest's own per-gene-mean to 0.0).
 | Ridge, Morgan fingerprint, α=0.1 | 0.5796 | −0.032 |
 | Ridge, α=10 | 0.5700 | −0.042 |
 | **Ridge, α=100** | **0.5674** | **−0.045 (−7.3%)** |
+| MLP (2×512 ReLU), full-batch, lr=1e-3 | 0.6089 | −0.003 |
 
 Chemistry beats the floor: a linear map from substructure fingerprints to
-expression predicts better than ignoring the molecule. Score still improves
-with stronger regularization (optimum α is above 100).
+expression predicts better than ignoring the molecule (Ridge). The optimum α
+is above 100 (score still improving there).
+
+The MLP, as first trained, **barely edges the baseline and loses to Ridge** —
+an honest "neural net ≠ automatic win" result. It's currently full-batch
+(only ~500 gradient steps) and untuned; lr=1e-5 underfits (2.46), lr=0.1
+diverges (10.5). Next: mini-batches, more epochs, regularization — the goal is
+to beat Ridge's 0.5674, not just the floor.
 
 ## Repo layout
 
@@ -126,10 +133,12 @@ vcpi-ml/
 │   ├── features.py         # SMILES → Morgan fingerprint X            ✅
 │   ├── models/
 │   │   ├── mean.py         # per-gene-mean baseline (fit/predict)     ✅
-│   │   └── ridge.py        # Morgan fingerprint → Ridge (fit/predict) ✅
+│   │   ├── ridge.py        # Morgan fingerprint → Ridge (fit/predict) ✅
+│   │   └── mlp.py          # PyTorch MLP (fit/predict + train loop)   ✅
 │   └── experiments/
 │       ├── baseline.py     # driver: per-gene-mean baseline           ✅
-│       └── ridge.py        # driver: Ridge (+ alpha sweep)            ✅
+│       ├── ridge.py        # driver: Ridge (+ alpha sweep)            ✅
+│       └── mlp.py          # driver: MLP (+ lr sweep)                 ✅
 ├── data/raw/               # downloaded parquet, gitignored (populated ✅)
 └── .env                    # TVC_TOKEN (gitignored)
 ```
@@ -142,7 +151,8 @@ A difficulty ladder — each rung runnable, each teaches one concept.
 1. ✅ Load & look at the data (exploration, download)
 2. ✅ Dumbest baseline: per-gene mean of train → **0.6119** wMSE (the floor)
 3. ✅ SMILES → Morgan fingerprint → Ridge → **0.5674** (chemistry beats the floor)
-4. ⬜ Plain MLP in PyTorch (first neural net)
+4. 🔨 Plain MLP in PyTorch (first neural net) → **0.6089** so far — runs & learns,
+   but untuned and not yet beating Ridge (mini-batching + tuning next)
 
 **Track B — attention from scratch**
 5. ⬜ Hand-write self-attention (Q/K/V + softmax) on a toy tensor
