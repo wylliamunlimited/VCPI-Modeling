@@ -16,6 +16,8 @@ dependencies = [
     "vcpi-prediction-contest @ git+https://github.com/virtualcell-vcpi/vcpi-prediction-contest-2026.git",
     # data client (gives us vcpi.load_experiment)
     "vcpi @ git+https://github.com/virtualcell-vcpi/vcpi-client.git",
+    "torchvision>=0.27.0",
+    "tqdm>=4.68.2",
 ]
 
 # This is what makes `from vcpi_ml import ...` work: it tells Python our
