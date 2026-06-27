@@ -6,6 +6,13 @@ import torch.nn as nn
 from tqdm import tqdm
 
 
+DEVICE = torch.device(
+    "cuda" if torch.cuda.is_available()
+    else "mps" if torch.backends.mps.is_available()
+    else "cpu"
+)
+
+
 class MLP(nn.Module):
 
     def __init__(self, n_in: int = 2048, n_out: int = 12995, hidden: int = 512):
@@ -31,11 +38,7 @@ class MLPModel():
         lr: float = 1e-3,
         weight_decay: float = 0.0
         ):
-        self.device = torch.device(
-            "cuda" if torch.cuda.is_available()
-            else "mps" if torch.backends.mps.is_available()
-            else "cpu"
-        )
+        self.device = DEVICE
         self.model = MLP(n_in=n_in, hidden=hidden, n_out=n_out)
         self.model.to(self.device)
         
@@ -43,15 +46,20 @@ class MLPModel():
         self.loss_fn = nn.MSELoss()
 
 
-    def fit(self, X: np.ndarray, Y: pd.DataFrame, epoch: int = 500, batch: int = 256):
+    def fit(
+        self, X: np.ndarray, Y: pd.DataFrame,
+        epoch: int = 500, batch: int = 256,
+        patience: int = 50, min_delta: float = 1e-4
+        ):
 
-        X, Y = (
-            torch.tensor(X, dtype=torch.float32, device=self.device), 
-            torch.tensor(Y.to_numpy(), dtype=torch.float32, device=self.device)
-        )
+        if not torch.is_tensor(X):
+            X = torch.tensor(X, dtype=torch.float32, device=self.device)
+        if not torch.is_tensor(Y):
+            Y = torch.tensor(Y.to_numpy(), dtype=torch.float32, device=self.device)
         n = X.shape[0]
         self.history = []
 
+        best_loss, no_improve = float("inf"), 0
         pbar = tqdm(range(epoch))
         for ep in pbar:
             perm = torch.randperm(n, device=self.device)
@@ -68,6 +76,14 @@ class MLPModel():
                 self.optimizer.step()
             self.history.append(epoch_loss / n_batch)
             pbar.set_postfix(loss=f"{self.history[-1]:.4f}")
+
+            if self.history[-1] < best_loss - min_delta:
+                best_loss, no_improve = self.history[-1], 0
+            else:
+                no_improve += 1
+                if no_improve >= patience:
+                    pbar.set_postfix(loss=f"{self.history[-1]:.4f}", stopped=f"ep{ep}")
+                    break
 
         return self
 

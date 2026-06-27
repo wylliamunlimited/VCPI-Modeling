@@ -6,9 +6,10 @@ from vcpi_ml.data import (
     load_fingerprint_split, load_weights
 )
 from vcpi_ml.evaluation import evaluate, wide_to_long
-from vcpi_ml.models.mlp import MLPModel
+from vcpi_ml.models.mlp import MLPModel, DEVICE
 import pandas as pd
 import numpy as np
+import torch
 
 GRID = {
     "lr":           [1e-3, 3e-3, 5e-3],
@@ -18,9 +19,10 @@ GRID = {
 }
 
 def pipeline(
-    genes: set[str], weights: pd.DataFrame, 
-    X_train: pd.DataFrame | np.ndarray, Y_train: pd.DataFrame | np.ndarray, 
-    X_val: pd.DataFrame | np.ndarray, Y_val: pd.DataFrame | np.ndarray, lr: float = 0.01,
+    genes: set[str], weights: pd.DataFrame,
+    X_train: torch.Tensor, Y_train: torch.Tensor,
+    X_val: pd.DataFrame | np.ndarray, Y_val: pd.DataFrame | np.ndarray,
+    gene_cols: pd.Index, lr: float = 0.01,
     batch_size: int = 256, epoch: int = 2048, weight_decay: float = 0.0
     ):
 
@@ -30,7 +32,7 @@ def pipeline(
     model.fit(X=X_train, Y=Y_train, epoch=epoch, batch=batch_size)
 
     pred = model.predict(X=X_val)
-    pred = pd.DataFrame(pred, index=Y_val.index, columns=Y_train.columns)
+    pred = pd.DataFrame(pred, index=Y_val.index, columns=gene_cols)
     pred, truth = (
         wide_to_long(pred, value_col="predicted_expression"),
         wide_to_long(Y_val, value_col="expression"),
@@ -50,12 +52,17 @@ def main():
     print("==== Loading in Weights ====")
     weights = load_weights()
 
+    # Convert the train arrays to device tensors once, not per grid run.
+    gene_cols = Y_train.columns
+    X_train = torch.tensor(X_train, dtype=torch.float32, device=DEVICE)
+    Y_train = torch.tensor(Y_train.to_numpy(), dtype=torch.float32, device=DEVICE)
+
     for _lr in GRID.get("lr", []):
         for ep in GRID.get("epoch", []):
             for _batch_size in GRID.get("batch", []):
                 for _wd in GRID.get("weight_decay", []):
                     pipeline(
-                        genes, weights, X_train, Y_train, X_val, Y_val, 
+                        genes, weights, X_train, Y_train, X_val, Y_val, gene_cols,
                         lr=_lr, batch_size=_batch_size, epoch=ep, weight_decay=_wd
                         )
     
