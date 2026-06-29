@@ -1,3 +1,15 @@
+"""mlp.py — MLP driver + hyperparameter grid sweep, scored vs the 0.6119 floor.
+
+Loads the fingerprint→expression split once, then trains an MLPModel for every
+(lr, epoch, batch, weight_decay) combination in GRID and prints each run's
+validation wMSE alongside its final train loss (to read under/overfit). The
+heavy data load and train-tensor conversion happen ONCE, outside the loop —
+the grid runs in a single process so nothing is reloaded per config.
+
+Tuned best so far: lr=1e-3, batch=128, wd=0 → ~0.5685 (ties Ridge).
+
+    uv run python src/vcpi_ml/experiments/mlp.py
+"""
 
 from vcpi_prediction_contest import (
     load_gene_filter
@@ -25,7 +37,11 @@ def pipeline(
     gene_cols: pd.Index, lr: float = 0.01,
     batch_size: int = 256, epoch: int = 2048, weight_decay: float = 0.0
     ):
+    """Train one MLP config, score it on val, and print wMSE + final train loss.
 
+    Predictions come back as a raw array; we label them (index=val compounds,
+    columns=gene_cols) before wide_to_long so the scorer can align them.
+    """
     params = f"lr={lr}, epoch={epoch}, batch={batch_size}, wd={weight_decay}"
     print(f"===== Training MLP ({params}) =====")
     model = MLPModel(lr=lr, weight_decay=weight_decay)
@@ -43,6 +59,7 @@ def pipeline(
 
 
 def main():
+    """Load once, convert train tensors once, then sweep the GRID in one process."""
     print("==== Loading in data (w/ train-test-split) ====")
     genes = set(load_gene_filter())
     X_train, Y_train, X_val, Y_val = load_fingerprint_split(

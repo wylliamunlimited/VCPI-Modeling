@@ -1,3 +1,19 @@
+"""mlp.py — a PyTorch MLP over Morgan fingerprints (rung 4, first neural net).
+
+Same fingerprint X → expression Y task as ridge.py, but with a 2-hidden-layer
+ReLU network and a hand-written training loop (forward → loss → backward →
+step) instead of a closed-form solver. Tuned, it ties Ridge (~0.568) — the
+fingerprint→expression signal is largely linear, so extra capacity adds little.
+
+Two classes, mirroring the rest of the project:
+  - MLP       — the nn.Module (architecture only).
+  - MLPModel  — the fit/predict wrapper holding the optimizer + training loop,
+                so the driver can swap it for any other model in one line.
+
+Following "DataFrames at the boundary, arrays in the model": fit/predict take
+numpy X (Y as a DataFrame for fit), predict returns a raw (n x genes) array
+that the driver labels before scoring.
+"""
 
 import pandas as pd
 import numpy as np
@@ -6,6 +22,7 @@ import torch.nn as nn
 from tqdm import tqdm
 
 
+# cuda (other machines) → mps (this Mac's GPU) → cpu; resolved once at import.
 DEVICE = torch.device(
     "cuda" if torch.cuda.is_available()
     else "mps" if torch.backends.mps.is_available()
@@ -14,6 +31,12 @@ DEVICE = torch.device(
 
 
 class MLP(nn.Module):
+    """The network: n_in → 512 → 512 → n_out, ReLU between layers.
+
+    The ReLUs are what make this more than Ridge — without a nonlinearity the
+    stacked Linears collapse to a single linear map (i.e. Ridge). No activation
+    on the output (regression).
+    """
 
     def __init__(self, n_in: int = 2048, n_out: int = 12995, hidden: int = 512):
         super().__init__()
@@ -27,13 +50,21 @@ class MLP(nn.Module):
 
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Forward pass: (batch, n_in) → (batch, n_out). No no_grad here —
+        autograd needs to record this graph so loss.backward() can work."""
         return self.model(x)
 
 
 class MLPModel():
+    """fit/predict wrapper around MLP: owns the optimizer, loss, and train loop.
+
+    Hyperparameters (set here, tuned via the sweep): lr and weight_decay (Adam's
+    L2 — the MLP's analog of Ridge's alpha; on this data it only hurt, so default
+    0). The architecture knobs (hidden) pass through to MLP.
+    """
 
     def __init__(
-        self, 
+        self,
         n_in: int = 2048, n_out: int = 12995, hidden: int = 512,
         lr: float = 1e-3,
         weight_decay: float = 0.0
@@ -51,7 +82,15 @@ class MLPModel():
         epoch: int = 500, batch: int = 256,
         patience: int = 50, min_delta: float = 1e-4
         ):
+        """Train with mini-batch gradient descent; early-stop on a loss plateau.
 
+        Each epoch shuffles, then walks the data in `batch`-sized chunks running
+        the 5-line loop (zero_grad → forward → loss → backward → step). Records
+        mean epoch loss in self.history. Stops early if the loss hasn't improved
+        by `min_delta` for `patience` epochs. Returns self (chainable).
+
+        X: (n, n_in) numpy fingerprints; Y: (n, n_out) expression DataFrame.
+        """
         if not torch.is_tensor(X):
             X = torch.tensor(X, dtype=torch.float32, device=self.device)
         if not torch.is_tensor(Y):
@@ -89,6 +128,11 @@ class MLPModel():
 
 
     def predict(self, X: np.ndarray):
+        """Inference: (n, n_in) numpy → (n, n_out) numpy.
+
+        eval() + no_grad() turn off training behavior and gradient tracking;
+        the result is moved back to cpu/numpy for the driver to label & score.
+        """
         self.model.eval()
         X = torch.tensor(X, dtype=torch.float32, device=self.device)
         with torch.no_grad():
