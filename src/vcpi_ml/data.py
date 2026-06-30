@@ -143,3 +143,27 @@ def load_fingerprint_split(
     X_train = morgan_matrix(smiles.reindex(Y_train.index), n_bits, radius)
     X_val = morgan_matrix(smiles.reindex(Y_val.index), n_bits, radius)
     return X_train, Y_train, X_val, Y_val
+
+
+def build_smile_char_vocab(smiles_list: list | np.ndarray | pd.Series) -> dict[str, int]:
+
+    chars = sorted({c for s in smiles_list for c in s})
+    return {c: i for i, c in enumerate(chars)}
+
+
+def tokenize_smile_char(
+    smiles_list: list | np.ndarray | pd.Series, vocab: dict[str, int], max_len: int
+) -> tuple[np.ndarray, np.ndarray]:
+
+    n = len(smiles_list) # Sample count
+    tokens = np.zeros((n, max_len), dtype=np.int64)
+    mask = np.zeros((n, max_len), dtypes=np.int64)
+    
+    for i, s in enumerate(smiles_list):
+
+        ids = [vocab[c] for c in s]
+        tokens[i, : len(max_len)] = ids
+        mask[i, : len(max_len)] = 1
+
+    return tokens, mask
+
