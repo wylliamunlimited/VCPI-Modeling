@@ -146,24 +146,66 @@ def load_fingerprint_split(
 
 
 def build_smile_char_vocab(smiles_list: list | np.ndarray | pd.Series) -> dict[str, int]:
+    """Build a char -> id vocabulary for SMILES (char-level tokenization).
 
+    Ids start at 1; **id 0 is reserved for <pad>** so padding has its own id the
+    embedding and mask agree on. Fit this on TRAIN smiles only and reuse it for
+    val (a shared vocabulary — never let val invent its own ids).
+
+    Note: char-level splits two-character atoms (Cl, Br) and bracket atoms
+    ([nH], [O-]) into separate chars — chemically imprecise but workable; swap
+    for a regex SMILES tokenizer if it limits the model.
+    """
     chars = sorted({c for s in smiles_list for c in s})
-    return {c: i for i, c in enumerate(chars)}
+    return {c: i + 1 for i, c in enumerate(chars)}
 
 
 def tokenize_smile_char(
     smiles_list: list | np.ndarray | pd.Series, vocab: dict[str, int], max_len: int
 ) -> tuple[np.ndarray, np.ndarray]:
+    """Char-level encode + pad SMILES to max_len.
 
+    Returns (tokens, mask), both (n, max_len) int64 arrays:
+      tokens[i] = char ids of smiles i, right-padded with 0 (truncated at max_len)
+      mask[i]   = 1 for real tokens, 0 for padding (so attention/pooling skip pad)
+    Unknown chars (unseen in train) fall back to 0; int64 feeds nn.Embedding (Long).
+    """
     n = len(smiles_list) # Sample count
     tokens = np.zeros((n, max_len), dtype=np.int64)
-    mask = np.zeros((n, max_len), dtypes=np.int64)
+    mask = np.zeros((n, max_len), dtype=np.int64)
     
     for i, s in enumerate(smiles_list):
 
-        ids = [vocab[c] for c in s]
-        tokens[i, : len(max_len)] = ids
-        mask[i, : len(max_len)] = 1
+        ids = [vocab.get(c, 0) for c in s][: max_len]
+        tokens[i, : len(ids)] = ids
+        mask[i, : len(ids)] = 1
 
     return tokens, mask
 
+
+def load_token_split(
+    genes: set[str] | None = None,
+    max_len: int = 128,
+    n_val: int = 200,
+    seed: int = 0,
+) -> tuple[np.ndarray, np.ndarray, pd.DataFrame, np.ndarray, np.ndarray, pd.DataFrame, dict[str, int]]:
+    """Token dataset for the SMILES transformer (rung 6).
+
+    Builds the expression split, then char-tokenizes each side's SMILES in the
+    *same row order* as Y (reindex on Y.index, so X and Y can't desync). The
+    vocab is fit on TRAIN only and reused for val.
+
+    Returns (X_train, mask_train, Y_train, X_val, mask_val, Y_val, vocab):
+      X_*    — (compounds x max_len) int64 token ids
+      mask_* — (compounds x max_len) 1=real / 0=pad
+      Y_*    — labelled expression DataFrames (compound/gene ids for scoring)
+      vocab  — char->id map; len(vocab)+1 is the embedding vocab_size (+1 for pad)
+    """
+    Y_train, Y_val = load_expression_split(genes, n_val, seed)
+    smiles = smiles_by_compound()
+    train_smiles, val_smiles = smiles.reindex(Y_train.index), smiles.reindex(Y_val.index)
+
+    vocabs = build_smile_char_vocab(train_smiles)
+    X_train, mask_train = tokenize_smile_char(train_smiles, vocabs, max_len)
+    X_val, mask_val = tokenize_smile_char(val_smiles, vocabs, max_len)
+    return X_train, mask_train, Y_train, X_val, mask_val, Y_val, vocabs
