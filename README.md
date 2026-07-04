@@ -170,18 +170,22 @@ vcpi-ml/
 ├── src/vcpi_ml/
 │   ├── sqlshell.py         # remote SQL REPL for exploration         ✅
 │   ├── download.py         # data acquisition → data/raw/            ✅
-│   ├── data.py             # read-side loaders + compound split      ✅
+│   ├── data.py             # loaders + compound split + SMILES tokenizer ✅
 │   ├── expression.py       # counts → log2(CPM+1) target Y           ✅
 │   ├── evaluation.py       # wide→long reshape + wMSE scorer wrapper  ✅
 │   ├── features.py         # SMILES → Morgan fingerprint X            ✅
 │   ├── models/
 │   │   ├── mean.py         # per-gene-mean baseline (fit/predict)     ✅
 │   │   ├── ridge.py        # Morgan fingerprint → Ridge (fit/predict) ✅
-│   │   └── mlp.py          # PyTorch MLP (fit/predict + train loop)   ✅
+│   │   ├── mlp.py          # PyTorch MLP (fit/predict + train loop)   ✅
+│   │   └── smiles_transformer.py  # from-scratch multi-head attention 🔨
 │   └── experiments/
 │       ├── baseline.py     # driver: per-gene-mean baseline           ✅
 │       ├── ridge.py        # driver: Ridge (+ alpha sweep)            ✅
 │       └── mlp.py          # driver: MLP (+ hyperparameter grid)      ✅
+├── notebooks/
+│   ├── attention.py            # self-attention from scratch, toy tensor ✅
+│   └── attention_explained.md  # study notes: Q/K/V, dims, multi-head    ✅
 ├── data/raw/               # downloaded parquet, gitignored (populated ✅)
 └── .env                    # TVC_TOKEN (gitignored)
 ```
@@ -194,13 +198,15 @@ A difficulty ladder — each rung runnable, each teaches one concept.
 1. ✅ Load & look at the data (exploration, download)
 2. ✅ Dumbest baseline: per-gene mean of train → **0.6119** wMSE (the floor)
 3. ✅ SMILES → Morgan fingerprint → Ridge → **0.5674** (chemistry beats the floor)
-4. 🔨 Plain MLP in PyTorch (first neural net) → **0.5685** (grid-tuned:
-   lr=1e-3, batch=128, no weight decay) — now essentially ties Ridge; beating
-   it likely needs richer features or architecture, not more tuning
+4. ✅ Plain MLP in PyTorch (first neural net) → **0.5685** (grid-tuned:
+   lr=1e-3, batch=128, no weight decay) — essentially ties Ridge; beating it
+   likely needs richer features or architecture, not more tuning
 
 **Track B — attention from scratch**
-5. ⬜ Hand-write self-attention (Q/K/V + softmax) on a toy tensor
-6. ⬜ Tiny char-level transformer over SMILES strings
+5. ✅ Hand-write self-attention (Q/K/V + softmax) on a toy tensor
+   (`notebooks/attention.py` + `attention_explained.md`)
+6. 🔨 Tiny char-level transformer over SMILES strings — char tokenizer +
+   multi-head attention built; encoder blocks + pooling + regression head next
 7. ⬜ Understand ChemBERTa as a frozen feature extractor
 
 Scoring uses the contest package's `score_compounds` / `load_gene_filter` /
