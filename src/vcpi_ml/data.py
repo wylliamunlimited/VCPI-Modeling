@@ -145,7 +145,9 @@ def load_fingerprint_split(
     return X_train, Y_train, X_val, Y_val
 
 
-def build_smile_char_vocab(smiles_list: list | np.ndarray | pd.Series) -> dict[str, int]:
+def build_smile_char_vocab(
+    smiles_list: list | np.ndarray | pd.Series,
+) -> dict[str, int]:
     """Build a char -> id vocabulary for SMILES (char-level tokenization).
 
     Ids start at 1; **id 0 is reserved for <pad>** so padding has its own id the
@@ -170,13 +172,12 @@ def tokenize_smile_char(
       mask[i]   = 1 for real tokens, 0 for padding (so attention/pooling skip pad)
     Unknown chars (unseen in train) fall back to 0; int64 feeds nn.Embedding (Long).
     """
-    n = len(smiles_list) # Sample count
+    n = len(smiles_list)  # Sample count
     tokens = np.zeros((n, max_len), dtype=np.int64)
     mask = np.zeros((n, max_len), dtype=np.int64)
-    
-    for i, s in enumerate(smiles_list):
 
-        ids = [vocab.get(c, 0) for c in s][: max_len]
+    for i, s in enumerate(smiles_list):
+        ids = [vocab.get(c, 0) for c in s][:max_len]
         tokens[i, : len(ids)] = ids
         mask[i, : len(ids)] = 1
 
@@ -188,7 +189,15 @@ def load_token_split(
     max_len: int = 128,
     n_val: int = 200,
     seed: int = 0,
-) -> tuple[np.ndarray, np.ndarray, pd.DataFrame, np.ndarray, np.ndarray, pd.DataFrame, dict[str, int]]:
+) -> tuple[
+    np.ndarray,
+    np.ndarray,
+    pd.DataFrame,
+    np.ndarray,
+    np.ndarray,
+    pd.DataFrame,
+    dict[str, int],
+]:
     """Token dataset for the SMILES transformer (rung 6).
 
     Builds the expression split, then char-tokenizes each side's SMILES in the
@@ -203,7 +212,10 @@ def load_token_split(
     """
     Y_train, Y_val = load_expression_split(genes, n_val, seed)
     smiles = smiles_by_compound()
-    train_smiles, val_smiles = smiles.reindex(Y_train.index), smiles.reindex(Y_val.index)
+    train_smiles, val_smiles = (
+        smiles.reindex(Y_train.index),
+        smiles.reindex(Y_val.index),
+    )
 
     vocabs = build_smile_char_vocab(train_smiles)
     X_train, mask_train = tokenize_smile_char(train_smiles, vocabs, max_len)

@@ -11,12 +11,8 @@ Tuned best so far: lr=1e-3, batch=128, wd=0 → ~0.5685 (ties Ridge).
     uv run python src/vcpi_ml/experiments/mlp.py
 """
 
-from vcpi_prediction_contest import (
-    load_gene_filter
-)
-from vcpi_ml.data import (
-    load_fingerprint_split, load_weights
-)
+from vcpi_prediction_contest import load_gene_filter
+from vcpi_ml.data import load_fingerprint_split, load_weights
 from vcpi_ml.evaluation import evaluate, wide_to_long
 from vcpi_ml.models.mlp import MLPModel, DEVICE
 import pandas as pd
@@ -24,19 +20,26 @@ import numpy as np
 import torch
 
 GRID = {
-    "lr":           [1e-3, 3e-3, 5e-3],
-    "epoch":        [1000, 2500],
-    "batch":        [128, 256, 512],
+    "lr": [1e-3, 3e-3, 5e-3],
+    "epoch": [1000, 2500],
+    "batch": [128, 256, 512],
     "weight_decay": [0.0, 1e-4, 1e-3],
 }
 
+
 def pipeline(
-    genes: set[str], weights: pd.DataFrame,
-    X_train: torch.Tensor, Y_train: torch.Tensor,
-    X_val: pd.DataFrame | np.ndarray, Y_val: pd.DataFrame | np.ndarray,
-    gene_cols: pd.Index, lr: float = 0.01,
-    batch_size: int = 256, epoch: int = 2048, weight_decay: float = 0.0
-    ):
+    genes: set[str],
+    weights: pd.DataFrame,
+    X_train: torch.Tensor,
+    Y_train: torch.Tensor,
+    X_val: pd.DataFrame | np.ndarray,
+    Y_val: pd.DataFrame | np.ndarray,
+    gene_cols: pd.Index,
+    lr: float = 0.01,
+    batch_size: int = 256,
+    epoch: int = 2048,
+    weight_decay: float = 0.0,
+):
     """Train one MLP config, score it on val, and print wMSE + final train loss.
 
     Predictions come back as a raw array; we label them (index=val compounds,
@@ -79,10 +82,19 @@ def main():
             for _batch_size in GRID.get("batch", []):
                 for _wd in GRID.get("weight_decay", []):
                     pipeline(
-                        genes, weights, X_train, Y_train, X_val, Y_val, gene_cols,
-                        lr=_lr, batch_size=_batch_size, epoch=ep, weight_decay=_wd
-                        )
-    
+                        genes,
+                        weights,
+                        X_train,
+                        Y_train,
+                        X_val,
+                        Y_val,
+                        gene_cols,
+                        lr=_lr,
+                        batch_size=_batch_size,
+                        epoch=ep,
+                        weight_decay=_wd,
+                    )
+
 
 if __name__ == "__main__":
     main()

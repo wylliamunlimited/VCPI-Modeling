@@ -15,7 +15,15 @@ from vcpi_ml.evaluation import evaluate, wide_to_long
 from vcpi_ml.models.ridge import RidgeModel
 
 
-def pipeline(genes: set[str], weights: pd.DataFrame, X_train: pd.DataFrame | np.ndarray, Y_train: pd.DataFrame | np.ndarray, X_val: pd.DataFrame | np.ndarray, Y_val: pd.DataFrame | np.ndarray, alpha: int = 1):
+def pipeline(
+    genes: set[str],
+    weights: pd.DataFrame,
+    X_train: pd.DataFrame | np.ndarray,
+    Y_train: pd.DataFrame | np.ndarray,
+    X_val: pd.DataFrame | np.ndarray,
+    Y_val: pd.DataFrame | np.ndarray,
+    alpha: int = 1,
+):
 
     print(f"==== Fitting Model (alpha = {alpha}) ====")
     model = RidgeModel(alpha=alpha).fit(X_train, Y_train)
@@ -42,7 +50,7 @@ def main():
 
     print("==== Loading in Weights ====")
     weights = load_weights()
-    
+
     for alpha in [0.1, 1, 10, 100]:
         pipeline(genes, weights, X_train, Y_train, X_val, Y_val, alpha=alpha)
 

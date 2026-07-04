@@ -24,8 +24,10 @@ from tqdm import tqdm
 
 # cuda (other machines) → mps (this Mac's GPU) → cpu; resolved once at import.
 DEVICE = torch.device(
-    "cuda" if torch.cuda.is_available()
-    else "mps" if torch.backends.mps.is_available()
+    "cuda"
+    if torch.cuda.is_available()
+    else "mps"
+    if torch.backends.mps.is_available()
     else "cpu"
 )
 
@@ -45,9 +47,8 @@ class MLP(nn.Module):
             nn.ReLU(),
             nn.Linear(hidden, hidden),
             nn.ReLU(),
-            nn.Linear(hidden, n_out)
+            nn.Linear(hidden, n_out),
         )
-
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Forward pass: (batch, n_in) → (batch, n_out). No no_grad here —
@@ -55,7 +56,7 @@ class MLP(nn.Module):
         return self.model(x)
 
 
-class MLPModel():
+class MLPModel:
     """fit/predict wrapper around MLP: owns the optimizer, loss, and train loop.
 
     Hyperparameters (set here, tuned via the sweep): lr and weight_decay (Adam's
@@ -65,23 +66,30 @@ class MLPModel():
 
     def __init__(
         self,
-        n_in: int = 2048, n_out: int = 12995, hidden: int = 512,
+        n_in: int = 2048,
+        n_out: int = 12995,
+        hidden: int = 512,
         lr: float = 1e-3,
-        weight_decay: float = 0.0
-        ):
+        weight_decay: float = 0.0,
+    ):
         self.device = DEVICE
         self.model = MLP(n_in=n_in, hidden=hidden, n_out=n_out)
         self.model.to(self.device)
-        
-        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=lr, weight_decay=weight_decay)
+
+        self.optimizer = torch.optim.Adam(
+            self.model.parameters(), lr=lr, weight_decay=weight_decay
+        )
         self.loss_fn = nn.MSELoss()
 
-
     def fit(
-        self, X: np.ndarray, Y: pd.DataFrame,
-        epoch: int = 500, batch: int = 256,
-        patience: int = 50, min_delta: float = 1e-4
-        ):
+        self,
+        X: np.ndarray,
+        Y: pd.DataFrame,
+        epoch: int = 500,
+        batch: int = 256,
+        patience: int = 50,
+        min_delta: float = 1e-4,
+    ):
         """Train with mini-batch gradient descent; early-stop on a loss plateau.
 
         Each epoch shuffles, then walks the data in `batch`-sized chunks running
@@ -104,7 +112,7 @@ class MLPModel():
             perm = torch.randperm(n, device=self.device)
             epoch_loss, n_batch = 0.0, 0
             for start in range(0, n, batch):
-                idx = perm[start: start + batch]
+                idx = perm[start : start + batch]
                 self.optimizer.zero_grad()
                 xb, yb = X[idx], Y[idx]
                 pred = self.model(xb)
@@ -125,7 +133,6 @@ class MLPModel():
                     break
 
         return self
-
 
     def predict(self, X: np.ndarray):
         """Inference: (n, n_in) numpy → (n, n_out) numpy.

@@ -36,18 +36,18 @@ W_K = torch.randn(d_model, d_k)
 W_V = torch.randn(d_model, d_k)
 
 # Step 1: project each token into query / key / value vectors.
-Q, K, V = X @ W_Q, X @ W_K, X @ W_V          # each (seq_len, d_k)
+Q, K, V = X @ W_Q, X @ W_K, X @ W_V  # each (seq_len, d_k)
 
 # Step 2: every query dotted with every key, scaled by sqrt(d_k).
 # Use Q (the query projection), not X — attention compares Q to K, not raw input.
-scores = Q @ K.T / (d_k ** 0.5)              # (seq_len, seq_len)
+scores = Q @ K.T / (d_k**0.5)  # (seq_len, seq_len)
 
 # Step 3: softmax each row -> attention weights (each row is a distribution).
 weights = F.softmax(scores, dim=-1)
 
 print("= = = = = Weights (scaled by sqrt(d_k)) = = = = =")
 print(weights)
-print("==> Shape:", weights.shape)           # (seq_len, seq_len)
+print("==> Shape:", weights.shape)  # (seq_len, seq_len)
 print("==> Row sums (should all be ~1.0):", weights.sum(dim=-1))
 print("==> Rows 0 and 5 are identical tokens -> rows should match:")
 print(weights[0])
@@ -59,14 +59,14 @@ print()
 outputs = weights @ V
 print("= = = = = Outputs = = = = =")
 print(outputs)
-print("==> Shape:", outputs.shape)           # (seq_len, d_k)
+print("==> Shape:", outputs.shape)  # (seq_len, d_k)
 print()
 
 # - - - Why the sqrt(d_k) scaling? Compare against NO scaling - - -
 # Without dividing, larger raw scores push softmax toward near-one-hot (spiky),
 # which shrinks gradients. The scaling keeps the distribution sane.
 print("- - - - - NO scaling (raw Q @ K.T): weights get spikier - - - - -")
-scores_raw = Q @ K.T                          # no division
+scores_raw = Q @ K.T  # no division
 weights_raw = F.softmax(scores_raw, dim=-1)
 print(weights_raw)
 print("==> compare the sharpness to the scaled weights above")
