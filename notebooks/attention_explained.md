@@ -227,6 +227,105 @@ layer, 12 layers stacked — heads $\neq$ layers $\neq$ stages.
 
 ---
 
+## 10. Multi-head in code (`smiles_transformer.py`) — the details that confused me
+
+### 10.1 Full dimension walkthrough
+
+Concrete numbers: `batch=8`, `seq=10`, `d_model=128`, `n_heads=4`, `d_k=32`.
+
+```
+X                    (8, 10, 128)      8 samples, 10 tokens, 128-dim each
+
+W_Q, W_K, W_V        (128, 128)        one flat matrix each (nn.Linear)
+Q = W_Q(X)           (8, 10, 128)      project — FULL d_model out
+K = W_K(X)           (8, 10, 128)
+V = W_V(X)           (8, 10, 128)
+
+── split heads: .view(8,10,4,32).transpose(1,2) ──
+Q, K, V              (8, 4, 10, 32)    (batch, n_heads, seq, d_k)
+
+── attention, on the last two axes (10, 32) ──
+K.transpose(-2,-1)   (8, 4, 32, 10)
+score = Q @ Kᵀ /√d_k (8, 4, 10, 10)    (…, seq, seq)  ← d_k contracts away
+weights = softmax    (8, 4, 10, 10)    each row sums to 1
+out = weights @ V    (8, 4, 10, 32)    (…, seq, d_k)  ← seq contracts away
+
+── merge heads: .transpose(1,2).reshape(8,10,128) ──
+out                  (8, 10, 128)      back to (batch, seq, d_model)
+out = W_O(out)       (8, 10, 128)      final — same shape as X
+```
+
+Three shape-changes to watch: **split** (`128 → (4,32)`, head axis to front),
+**attention** (`d_k` dies in $QK^\top$, `seq` dies in `weights @ V`), **merge**
+(`(4,32) → 128`). In and out are both `(8,10,128)` — attention is
+shape-preserving.
+
+### 10.2 Each head DOES have its own Q/K/V — they're just packed into one matrix
+
+The worry: "surely each head needs its own $W_Q$ since they specialize." They
+do. `nn.Linear(d_model, d_model)` **is** all the per-head projections glued
+column-wise:
+
+$$
+W_Q = [\; W_Q^{h_0} \mid W_Q^{h_1} \mid W_Q^{h_2} \mid W_Q^{h_3} \;], \qquad
+W_Q^{h} \in \mathbb{R}^{\,d_{\text{model}} \times d_k}
+$$
+
+Because output column $j$ of $Q = X W_Q$ depends **only** on column $j$ of $W_Q$,
+slicing the *output* into heads (the `.view`) automatically corresponds to
+disjoint **column-blocks** of $W_Q$. So it's *mathematically identical* to
+`n_heads` separate `Linear(d_model, d_k)` layers — not an approximation. We pack
+them into one matmul purely for speed (one big matmul > a Python loop of small
+ones). They still specialize: different random init + independent gradients per
+block.
+
+Two corrections to the naive picture:
+- **The head axis is not stored.** $W_Q$ is a flat `(128, 128)`. The `(n_heads,
+  d_k)` structure is a *view of the output*, not a dimension of the weight.
+- **Heads split the projected output, not the input.** Every head reads the
+  **full** `d_model` token vector; each head's own projection maps it *down* to
+  $d_k$. The `d_k` slice lives in Q/K/V space, computed from all of $X$.
+
+### 10.3 Why multiply by $V$? (routing vs. content)
+
+`weights` (seq × seq) is an **affinity / attention map** — "how much token $i$
+listens to token $j$." But it carries **no content**; it's only a routing plan.
+Stop there and every token's vector is unchanged. Attention is two phases:
+
+| phase | tensor | meaning |
+|---|---|---|
+| **1. route** | `weights` (seq, seq) | who attends to whom — the graph |
+| **2. move content** | `weights @ V` (seq, $d_k$) | actually pull that content in |
+
+$$
+\text{out}_i = \sum_j \text{weights}_{ij}\, V_j
+$$
+
+Token $i$'s new vector = a relevance-weighted blend of everyone's **value**
+vectors. `weights` = *how much to listen to each person*; $V$ = *what each
+person says*; `weights @ V` = *the summary you walk away with*.
+
+### 10.4 Merge = concatenation, and where the "deep learning" lives
+
+**Merge is concatenation** (glue head slices side-by-side), not a sum:
+
+```
+token out = [ head0:32 | head1:32 | head2:32 | head3:32 ] = 128, then W_O mixes
+```
+
+The value-mixed output (those 32 floats/head) is a **distributed,
+contextualized embedding** — deliberately not human-readable, same as §4. The
+scalar → vector jump is the point: a single number has one degree of freedom; a
+$d_k$-vector holds many learnable features that later layers recombine.
+
+Crucially, **the attention math has no learnable weights** — softmax and the dot
+product are fixed plumbing. *All* the learning lives in the projections
+($W_Q, W_K, W_V, W_O$) and in **stacking layers**. The `weights` matrix stays
+interpretable (who-attends-to-whom); the value-mixed output is the opaque,
+deep-learned part. Both matter; only one is meant to be read.
+
+---
+
 ## TL;DR
 
 > Embed tokens into float vectors (separate layer) → project each into Q/K/V →
