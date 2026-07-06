@@ -64,6 +64,51 @@ class MultiHeadAttention(nn.Module):
         return self.W_O(out)
 
 
+class EncoderBlock(nn.Module):
+    """One transformer encoder layer: attention sublayer + feed-forward sublayer.
+
+    Each sublayer is wrapped in the same Add & Norm pattern (post-norm, matching
+    the original Transformer figure): LayerNorm(x + Dropout(Sublayer(x))). The
+    attention sublayer *mixes information across tokens*; the feed-forward
+    sublayer *transforms each token independently* (the per-token nonlinearity
+    attention lacks). Residuals let gradients flow when these blocks are stacked;
+    the two LayerNorms are separate (each has its own learned scale/shift), while
+    one parameter-free Dropout is shared. Shape-preserving throughout.
+
+    attention: a MultiHeadAttention (token mixing).
+    ffn:       a per-token network, e.g. Linear(d_model, h) -> ReLU -> Linear(h, d_model).
+    """
+
+    def __init__(
+        self,
+        attention: nn.Module,
+        ffn: nn.Module,
+        dropout: float = 0.1,
+        d_model: int = 128,
+    ):
+        super().__init__()
+        self.attn = attention
+        self.ffn = ffn
+        self.norm_attn = nn.LayerNorm(d_model)  # normalizes the attention sublayer
+        self.norm_ffn = nn.LayerNorm(d_model)   # normalizes the feed-forward sublayer
+        self.dropout = nn.Dropout(dropout)      # parameter-free, safe to reuse
+
+    def forward(self, X: torch.Tensor) -> torch.Tensor:
+        """X: (batch, seq, d_model) -> same shape, each token refined.
+
+        Two Add & Norm sublayers: first attention (cross-token mixing), then the
+        feed-forward (per-token transform). Dropout is applied to each sublayer's
+        output before it rejoins the residual branch.
+        """
+        # Add & Norm #1 — attention sublayer.
+        attn_residual = X + self.dropout(self.attn(X))          # Add (residual)
+        attn_hidden = self.norm_attn(attn_residual)             # Norm
+
+        # Add & Norm #2 — feed-forward sublayer.
+        ffn_residual = attn_hidden + self.dropout(self.ffn(attn_hidden))  # Add
+        return self.norm_ffn(ffn_residual)                      # Norm
+
+
 class SmilesTransformer(nn.Module):
     # TODO (rung 6 phase 2): embed -> +positional -> EncoderBlocks(MultiHeadAttention)
     # -> masked mean-pool -> Linear(d_model, n_genes) regression head.
