@@ -90,8 +90,8 @@ class EncoderBlock(nn.Module):
         self.attn = attention
         self.ffn = ffn
         self.norm_attn = nn.LayerNorm(d_model)  # normalizes the attention sublayer
-        self.norm_ffn = nn.LayerNorm(d_model)   # normalizes the feed-forward sublayer
-        self.dropout = nn.Dropout(dropout)      # parameter-free, safe to reuse
+        self.norm_ffn = nn.LayerNorm(d_model)  # normalizes the feed-forward sublayer
+        self.dropout = nn.Dropout(dropout)  # parameter-free, safe to reuse
 
     def forward(self, X: torch.Tensor) -> torch.Tensor:
         """X: (batch, seq, d_model) -> same shape, each token refined.
@@ -101,15 +101,55 @@ class EncoderBlock(nn.Module):
         output before it rejoins the residual branch.
         """
         # Add & Norm #1 — attention sublayer.
-        attn_residual = X + self.dropout(self.attn(X))          # Add (residual)
-        attn_hidden = self.norm_attn(attn_residual)             # Norm
+        attn_residual = X + self.dropout(self.attn(X))  # Add (residual)
+        attn_hidden = self.norm_attn(attn_residual)  # Norm
 
         # Add & Norm #2 — feed-forward sublayer.
         ffn_residual = attn_hidden + self.dropout(self.ffn(attn_hidden))  # Add
-        return self.norm_ffn(ffn_residual)                      # Norm
+        return self.norm_ffn(ffn_residual)  # Norm
 
 
 class SmilesTransformer(nn.Module):
-    # TODO (rung 6 phase 2): embed -> +positional -> EncoderBlocks(MultiHeadAttention)
-    # -> masked mean-pool -> Linear(d_model, n_genes) regression head.
-    pass
+    def __init__(
+        self,
+        vocab_size: int,
+        n_genes: int,
+        d_model: int = 128,
+        n_heads: int = 4,
+        n_attention: int = 1,
+        max_len: int = 128,
+        dropout: int = 0.1,
+    ):
+        super().__init__()
+        # Attention Head
+        self.embed = nn.Embedding(vocab_size, d_model, padding_idx=0)
+        self.pos = nn.Embedding(max_len, d_model)  # position encoding
+        self.blocks = nn.ModuleList(
+            [
+                EncoderBlock(
+                    attention=MultiHeadAttention(d_model, n_heads),
+                    ffn=nn.Sequential(
+                        nn.Linear(d_model, 512), nn.ReLU(), nn.Linear(512, d_model)
+                    ),
+                    dropout=dropout,
+                    d_model=d_model,
+                )
+                for _ in range(n_attention)
+            ]
+        )  # (batch, seq, d_model)
+
+        self.head = nn.Linear(d_model, n_genes)  ## Regression Head
+
+    def forward(self, X: torch.Tensor):
+
+        positions = torch.arange(
+            X.shape[1], device=X.device
+        )  # take seq from (batch, seq)
+        X = self.embed(X) + self.pos(positions)
+
+        for block in self.blocks:
+            X = block(X)
+
+        X = X.mean(dim=1)  # (batch, seq, d_model) --> (batch, d_model)
+        X = self.head(X)  # Regression --> (batch, n_genes)
+        return X
