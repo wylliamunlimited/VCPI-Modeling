@@ -1,3 +1,19 @@
+"""smiles_transformer.py — a from-scratch SMILES transformer (rung 6).
+
+Learns chemistry features directly from char-tokenized SMILES (vs. the
+hand-designed Morgan fingerprints of rungs 3-4), then predicts the ~13k gene
+expression values. Built bottom-up from three small, independently-testable
+modules — the attention math is hand-written, not nn.MultiheadAttention:
+
+    SmilesTransformer          embed -> +positional -> encoder blocks -> pool -> head
+      └─ EncoderBlock          attention + FFN, each in an Add & Norm residual
+            └─ MultiHeadAttention   scaled dot-product attention, n_heads lanes
+
+A padding mask (1=real, 0=pad) is threaded through so padding never influences
+attention (pad keys scored -inf before softmax) or the mean-pool (pad tokens
+excluded from the average). See notebooks/attention_explained.md for the theory.
+"""
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -43,7 +59,9 @@ class MultiHeadAttention(nn.Module):
         attends to whom"; mix = weights @ V — pull in each token's value content;
         merge heads and project with W_O.
 
-        (No padding mask yet — added when EncoderBlock threads it through.)
+        mask: optional (batch, seq), 1=real / 0=pad. Reshaped to (batch, 1, 1, seq)
+        so it broadcasts over heads and query rows; pad *keys* are scored -inf
+        before softmax (e^-inf = 0), so no token attends to padding.
         """
         batch, seq, _ = X.shape
 
@@ -113,6 +131,15 @@ class EncoderBlock(nn.Module):
 
 
 class SmilesTransformer(nn.Module):
+    """End-to-end SMILES -> gene-expression model (rung 6).
+
+    Pipeline: token ids -> embed (+ learned positional) -> n_attention encoder
+    blocks -> masked mean-pool over real tokens -> Linear regression head. The
+    pooled vector is a *learned molecule embedding* (the transformer analog of a
+    Morgan fingerprint); the head maps it to the ~13k gene targets. Same
+    fit/predict role as the other models, so a driver can swap it in.
+    """
+
     def __init__(
         self,
         vocab_size: int,
@@ -123,10 +150,16 @@ class SmilesTransformer(nn.Module):
         max_len: int = 128,
         dropout: float = 0.1,
     ):
+        """vocab_size = char vocab + 1 (pad id 0); n_genes = regression outputs.
+
+        d_model = token width; n_heads = attention lanes; n_attention = how many
+        EncoderBlocks to stack (depth); max_len = longest tokenized SMILES (sizes
+        the positional table — keep equal to the tokenizer's max_len).
+        """
         super().__init__()
-        # Attention Head
+        # Embedding: token id -> vector (pad row zeroed) + a learned per-position vector.
         self.embed = nn.Embedding(vocab_size, d_model, padding_idx=0)
-        self.pos = nn.Embedding(max_len, d_model)  # position encoding
+        self.pos = nn.Embedding(max_len, d_model)  # learned positional encoding
         self.blocks = nn.ModuleList(
             [
                 EncoderBlock(
@@ -144,7 +177,11 @@ class SmilesTransformer(nn.Module):
         self.head = nn.Linear(d_model, n_genes)  ## Regression Head
 
     def forward(self, X: torch.Tensor, mask: torch.Tensor | None = None):
+        """X: (batch, seq) token ids, mask: (batch, seq) 1=real/0=pad -> (batch, n_genes).
 
+        Embed + add positional, run the encoder blocks (mask threaded to each),
+        masked mean-pool to one vector per molecule, then the regression head.
+        """
         seq = X.shape[1]  # take seq from (batch, seq)
         assert seq <= self.pos.num_embeddings, (
             f"seq={seq} exceeds max_len={self.pos.num_embeddings}; "

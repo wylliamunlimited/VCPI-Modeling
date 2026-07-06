@@ -178,7 +178,7 @@ vcpi-ml/
 │   │   ├── mean.py         # per-gene-mean baseline (fit/predict)     ✅
 │   │   ├── ridge.py        # Morgan fingerprint → Ridge (fit/predict) ✅
 │   │   ├── mlp.py          # PyTorch MLP (fit/predict + train loop)   ✅
-│   │   └── smiles_transformer.py  # from-scratch multi-head attention 🔨
+│   │   └── smiles_transformer.py  # from-scratch SMILES transformer       🔨
 │   └── experiments/
 │       ├── baseline.py     # driver: per-gene-mean baseline           ✅
 │       ├── ridge.py        # driver: Ridge (+ alpha sweep)            ✅
@@ -205,8 +205,11 @@ A difficulty ladder — each rung runnable, each teaches one concept.
 **Track B — attention from scratch**
 5. ✅ Hand-write self-attention (Q/K/V + softmax) on a toy tensor
    (`notebooks/attention.py` + `attention_explained.md`)
-6. 🔨 Tiny char-level transformer over SMILES strings — char tokenizer +
-   multi-head attention built; encoder blocks + pooling + regression head next
+6. 🔨 Char-level SMILES transformer, hand-written from scratch — char
+   tokenizer, multi-head attention (packed Q/K/V + head reshape), Add & Norm
+   encoder blocks, padding mask + masked mean-pool, and a regression head are
+   all built and pass an end-to-end shape/NaN smoke test. **Next:** the
+   fit/predict wrapper (training loop) + driver, then score vs the 0.5674 bar.
 7. ⬜ Understand ChemBERTa as a frozen feature extractor
 
 Scoring uses the contest package's `score_compounds` / `load_gene_filter` /
