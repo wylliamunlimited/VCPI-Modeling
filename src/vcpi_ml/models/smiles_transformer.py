@@ -34,7 +34,7 @@ class MultiHeadAttention(nn.Module):
         self.W_V = nn.Linear(d_model, d_model)
         self.W_O = nn.Linear(d_model, d_model)  # mixes the concatenated heads
 
-    def forward(self, X: torch.Tensor):
+    def forward(self, X: torch.Tensor, mask: torch.Tensor | None = None):
         """Contextualize each token by a relevance-weighted blend of all tokens.
 
         X: (batch, seq, d_model). Returns the same shape, each token now enriched
@@ -56,6 +56,9 @@ class MultiHeadAttention(nn.Module):
         score = (Q @ K.transpose(-2, -1)) / (
             self.d_k**0.5
         )  # (batch, n_heads, seq, seq)
+        if mask is not None:
+            score = score.masked_fill(mask[:, None, None, :] == 0, float("-inf"))
+
         weights = F.softmax(score, dim=-1)  # (batch, n_heads, seq, seq)
         out = weights @ V  # (batch, n_heads, seq, d_k)
 
@@ -93,7 +96,7 @@ class EncoderBlock(nn.Module):
         self.norm_ffn = nn.LayerNorm(d_model)  # normalizes the feed-forward sublayer
         self.dropout = nn.Dropout(dropout)  # parameter-free, safe to reuse
 
-    def forward(self, X: torch.Tensor) -> torch.Tensor:
+    def forward(self, X: torch.Tensor, mask: torch.Tensor | None = None) -> torch.Tensor:
         """X: (batch, seq, d_model) -> same shape, each token refined.
 
         Two Add & Norm sublayers: first attention (cross-token mixing), then the
@@ -101,7 +104,7 @@ class EncoderBlock(nn.Module):
         output before it rejoins the residual branch.
         """
         # Add & Norm #1 — attention sublayer.
-        attn_residual = X + self.dropout(self.attn(X))  # Add (residual)
+        attn_residual = X + self.dropout(self.attn(X, mask))  # Add (residual)
         attn_hidden = self.norm_attn(attn_residual)  # Norm
 
         # Add & Norm #2 — feed-forward sublayer.
@@ -118,7 +121,7 @@ class SmilesTransformer(nn.Module):
         n_heads: int = 4,
         n_attention: int = 1,
         max_len: int = 128,
-        dropout: int = 0.1,
+        dropout: float = 0.1,
     ):
         super().__init__()
         # Attention Head
@@ -140,7 +143,7 @@ class SmilesTransformer(nn.Module):
 
         self.head = nn.Linear(d_model, n_genes)  ## Regression Head
 
-    def forward(self, X: torch.Tensor):
+    def forward(self, X: torch.Tensor, mask: torch.Tensor | None = None):
 
         positions = torch.arange(
             X.shape[1], device=X.device
@@ -148,8 +151,9 @@ class SmilesTransformer(nn.Module):
         X = self.embed(X) + self.pos(positions)
 
         for block in self.blocks:
-            X = block(X)
+            X = block(X, mask) # (batch, seq, d_model)
 
-        X = X.mean(dim=1)  # (batch, seq, d_model) --> (batch, d_model)
+        m = mask.unsqueeze(dim=-1) # (batch, seq, 1)
+        X = (X * m).sum(dim=1) / m.sum(dim=1).clamp(min=1) # (batch, d_model)
         X = self.head(X)  # Regression --> (batch, n_genes)
         return X
