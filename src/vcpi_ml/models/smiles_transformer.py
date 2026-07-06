@@ -145,9 +145,12 @@ class SmilesTransformer(nn.Module):
 
     def forward(self, X: torch.Tensor, mask: torch.Tensor | None = None):
 
-        positions = torch.arange(
-            X.shape[1], device=X.device
-        )  # take seq from (batch, seq)
+        seq = X.shape[1]  # take seq from (batch, seq)
+        assert seq <= self.pos.num_embeddings, (
+            f"seq={seq} exceeds max_len={self.pos.num_embeddings}; "
+            "truncate tokens or raise max_len"
+        )
+        positions = torch.arange(seq, device=X.device)
         X = self.embed(X) + self.pos(positions)
 
         for block in self.blocks:
