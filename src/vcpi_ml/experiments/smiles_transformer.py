@@ -69,7 +69,7 @@ def pipeline(
     print(f"===== Training Transformer ({params}) =====")
 
     model = TransformerModel(
-        vocab_size=len(vocabs),
+        vocab_size=len(vocabs) + 1,  # +1: ids are 1..N, index 0 reserved for <pad>
         n_genes=len(genes), d_model=d_model,
         n_heads=n_heads, n_attention=n_attention,
         max_len=MAX_SEQ_LEN, dropout=dropout,
