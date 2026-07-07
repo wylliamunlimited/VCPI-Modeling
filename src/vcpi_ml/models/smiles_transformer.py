@@ -17,6 +17,11 @@ excluded from the average). See notebooks/attention_explained.md for the theory.
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import numpy as np
+import pandas as pd
+from tqdm import tqdm
+
+from vcpi_ml.device import DEVICE
 
 
 class MultiHeadAttention(nn.Module):
@@ -114,7 +119,9 @@ class EncoderBlock(nn.Module):
         self.norm_ffn = nn.LayerNorm(d_model)  # normalizes the feed-forward sublayer
         self.dropout = nn.Dropout(dropout)  # parameter-free, safe to reuse
 
-    def forward(self, X: torch.Tensor, mask: torch.Tensor | None = None) -> torch.Tensor:
+    def forward(
+        self, X: torch.Tensor, mask: torch.Tensor | None = None
+    ) -> torch.Tensor:
         """X: (batch, seq, d_model) -> same shape, each token refined.
 
         Two Add & Norm sublayers: first attention (cross-token mixing), then the
@@ -191,9 +198,106 @@ class SmilesTransformer(nn.Module):
         X = self.embed(X) + self.pos(positions)
 
         for block in self.blocks:
-            X = block(X, mask) # (batch, seq, d_model)
+            X = block(X, mask)  # (batch, seq, d_model)
 
-        m = mask.unsqueeze(dim=-1) # (batch, seq, 1)
-        X = (X * m).sum(dim=1) / m.sum(dim=1).clamp(min=1) # (batch, d_model)
+        m = mask.unsqueeze(dim=-1)  # (batch, seq, 1)
+        X = (X * m).sum(dim=1) / m.sum(dim=1).clamp(min=1)  # (batch, d_model)
         X = self.head(X)  # Regression --> (batch, n_genes)
         return X
+
+
+class TransformerModel:
+    def __init__(
+        self,
+        vocab_size: int,
+        n_genes: int,
+        d_model: int = 128,
+        n_heads: int = 4,
+        n_attention: int = 1,
+        max_len: int = 128,
+        dropout: float = 0.1,
+        lr: float = 1e-3,
+        weight_decay: float = 0.0,
+    ):
+
+        self.device = DEVICE
+        self.transformer = SmilesTransformer(
+            vocab_size=vocab_size,
+            n_genes=n_genes,
+            d_model=d_model,
+            n_heads=n_heads,
+            n_attention=n_attention,
+            max_len=max_len,
+            dropout=dropout,
+        )
+        self.transformer.to(self.device)
+
+        self.optim = torch.optim.Adam(
+            self.transformer.parameters(), lr=lr, weight_decay=weight_decay
+        )
+
+        self.loss_fn = nn.MSELoss()
+
+    def fit(
+        self,
+        X: np.ndarray,
+        Y: pd.DataFrame,
+        mask_train: np.ndarray,
+        epoch: int = 500,
+        batch: int = 256,
+        patience: int = 50,
+        min_delta: float = 1e-4,
+    ):
+
+        if not torch.is_tensor(X):
+            X = torch.tensor(X, dtype=torch.long, device=self.device)
+        if not torch.is_tensor(Y):
+            Y = torch.tensor(Y.to_numpy(), dtype=torch.float32, device=self.device)
+        if not torch.is_tensor(mask_train):
+            mask_train = torch.tensor(
+                mask_train, dtype=torch.float32, device=self.device
+            )
+
+        n = X.shape[0]  # sample size
+        self.history = []
+
+        best_loss, no_improve = float("inf"), 0
+        pbar = tqdm(range(epoch))
+        for ep in pbar:
+            perm = torch.randperm(n, device=self.device)
+            epoch_loss, n_batch = 0.0, 0
+            for start in range(0, n, batch):
+                idx = perm[start : start + batch]
+                self.optim.zero_grad()
+                xb, yb, maskb = X[idx], Y[idx], mask_train[idx]
+                pred = self.transformer(xb, maskb)
+                loss = self.loss_fn(pred, yb)
+                epoch_loss += loss.item()
+                n_batch += 1
+                loss.backward()
+                self.optim.step()
+            self.history.append(epoch_loss / n_batch)
+            pbar.set_postfix(loss=f"{self.history[-1]:.4f}")
+
+            if self.history[-1] < best_loss - min_delta:
+                best_loss, no_improve = self.history[-1], 0
+            else:
+                no_improve += 1
+                if no_improve >= patience:
+                    pbar.set_postfix(loss=f"{self.history[-1]:.4f}", stopped=f"ep{ep}")
+                    break
+
+        return self
+
+    def predict(self, X: np.ndarray, mask_val: np.ndarray):
+
+        self.transformer.eval()
+        if not torch.is_tensor(X):
+            X = torch.tensor(X, dtype=torch.long, device=self.device)
+        if not torch.is_tensor(mask_val):
+            mask_val = torch.tensor(mask_val, dtype=torch.float32, device=self.device)
+
+        with torch.no_grad():
+            pred = self.transformer(X, mask_val)
+
+        return pred.detach().cpu().numpy()

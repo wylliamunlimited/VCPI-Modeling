@@ -21,15 +21,7 @@ import torch as torch
 import torch.nn as nn
 from tqdm import tqdm
 
-
-# cuda (other machines) → mps (this Mac's GPU) → cpu; resolved once at import.
-DEVICE = torch.device(
-    "cuda"
-    if torch.cuda.is_available()
-    else "mps"
-    if torch.backends.mps.is_available()
-    else "cpu"
-)
+from vcpi_ml.device import DEVICE
 
 
 class MLP(nn.Module):
