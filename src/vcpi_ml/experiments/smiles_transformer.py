@@ -1,3 +1,13 @@
+"""smiles_transformer.py — driver: train the from-scratch SMILES transformer.
+
+Loads the token->expression split once, then coordinate-searches the GRID (one
+hyperparameter at a time, ~12 runs, not the 72-run full product) and prints each
+config's validation wMSE against the 0.5674 Ridge bar. Each pipeline() call
+trains a fresh TransformerModel and scores it, so nothing leaks across configs.
+
+    uv run python src/vcpi_ml/experiments/smiles_transformer.py
+"""
+
 from vcpi_prediction_contest import load_gene_filter
 from vcpi_ml.data import load_token_split, load_weights
 from vcpi_ml.device import DEVICE
@@ -45,7 +55,13 @@ def pipeline(
     lr: float = 1e-3,
     weight_decay: float = 0.0
 ):
+    """Train one transformer config, score it on val, and print wMSE + train loss.
 
+    Builds a fresh TransformerModel, fits on the token split, predicts on val,
+    then labels the raw prediction array (index=val compounds, columns=gene_cols)
+    so wide_to_long/evaluate can align it against truth. Returns the val wMSE so
+    the coordinate search can compare configs.
+    """
     params = (
         f"lr={lr}, epoch={epoch}, batch={batch_size}, d_model={d_model}, "
         f"n_attention={n_attention}, heads={n_heads}, dropout={dropout}"

@@ -207,6 +207,19 @@ class SmilesTransformer(nn.Module):
 
 
 class TransformerModel:
+    """fit/predict wrapper around SmilesTransformer (mirrors MLPModel).
+
+    The nn.Module (SmilesTransformer) is architecture only; this owns the
+    optimizer, loss, and training loop so a driver can call .fit()/.predict()
+    and swap it for any other model. Two transformer-specific details vs.
+    MLPModel: the padding mask is batched alongside X/Y and passed to the model,
+    and token ids stay int64 (nn.Embedding needs Long) while only Y is float32.
+
+    "DataFrames/arrays at the boundary, tensors in the model": fit/predict accept
+    numpy (Y as a DataFrame); predict returns a raw (n x genes) array the driver
+    labels before scoring.
+    """
+
     def __init__(
         self,
         vocab_size: int,
@@ -219,7 +232,12 @@ class TransformerModel:
         lr: float = 1e-3,
         weight_decay: float = 0.0,
     ):
+        """Build the model on DEVICE and its Adam optimizer + MSE loss.
 
+        vocab_size/n_genes/d_model/n_heads/n_attention/max_len/dropout pass
+        through to SmilesTransformer; lr and weight_decay (Adam's L2) are the
+        training knobs this wrapper owns.
+        """
         self.device = DEVICE
         self.transformer = SmilesTransformer(
             vocab_size=vocab_size,
@@ -248,7 +266,17 @@ class TransformerModel:
         patience: int = 50,
         min_delta: float = 1e-4,
     ):
+        """Train with mini-batch gradient descent; early-stop on a loss plateau.
 
+        Each epoch shuffles, then walks the data in `batch`-sized chunks running
+        the 5-line loop (zero_grad -> forward -> loss -> backward -> step),
+        slicing X, Y, AND mask by the same indices so tokens and their mask stay
+        aligned. Mean epoch loss is recorded in self.history; stops if it hasn't
+        improved by `min_delta` for `patience` epochs. Returns self (chainable).
+
+        X: (n, seq) token ids; mask_train: (n, seq) 1=real/0=pad; Y: (n, n_genes)
+        expression DataFrame.
+        """
         if not torch.is_tensor(X):
             X = torch.tensor(X, dtype=torch.long, device=self.device)
         if not torch.is_tensor(Y):
@@ -290,7 +318,11 @@ class TransformerModel:
         return self
 
     def predict(self, X: np.ndarray, mask_val: np.ndarray):
+        """Inference: (n, seq) token ids + (n, seq) mask -> (n, n_genes) numpy.
 
+        eval() + no_grad() turn off dropout and gradient tracking; the result is
+        moved back to cpu/numpy for the driver to label & score.
+        """
         self.transformer.eval()
         if not torch.is_tensor(X):
             X = torch.tensor(X, dtype=torch.long, device=self.device)

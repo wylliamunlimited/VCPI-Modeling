@@ -174,15 +174,17 @@ vcpi-ml/
 │   ├── expression.py       # counts → log2(CPM+1) target Y           ✅
 │   ├── evaluation.py       # wide→long reshape + wMSE scorer wrapper  ✅
 │   ├── features.py         # SMILES → Morgan fingerprint X            ✅
+│   ├── device.py           # shared torch device (cuda→mps→cpu)       ✅
 │   ├── models/
 │   │   ├── mean.py         # per-gene-mean baseline (fit/predict)     ✅
 │   │   ├── ridge.py        # Morgan fingerprint → Ridge (fit/predict) ✅
 │   │   ├── mlp.py          # PyTorch MLP (fit/predict + train loop)   ✅
-│   │   └── smiles_transformer.py  # from-scratch SMILES transformer       🔨
+│   │   └── smiles_transformer.py  # transformer + fit/predict wrapper      🔨
 │   └── experiments/
 │       ├── baseline.py     # driver: per-gene-mean baseline           ✅
 │       ├── ridge.py        # driver: Ridge (+ alpha sweep)            ✅
-│       └── mlp.py          # driver: MLP (+ hyperparameter grid)      ✅
+│       ├── mlp.py          # driver: MLP (+ hyperparameter grid)      ✅
+│       └── smiles_transformer.py  # driver: transformer (coord. search) 🔨
 ├── notebooks/
 │   ├── attention.py            # self-attention from scratch, toy tensor ✅
 │   └── attention_explained.md  # study notes: Q/K/V, dims, multi-head    ✅
@@ -207,9 +209,10 @@ A difficulty ladder — each rung runnable, each teaches one concept.
    (`notebooks/attention.py` + `attention_explained.md`)
 6. 🔨 Char-level SMILES transformer, hand-written from scratch — char
    tokenizer, multi-head attention (packed Q/K/V + head reshape), Add & Norm
-   encoder blocks, padding mask + masked mean-pool, and a regression head are
-   all built and pass an end-to-end shape/NaN smoke test. **Next:** the
-   fit/predict wrapper (training loop) + driver, then score vs the 0.5674 bar.
+   encoder blocks, padding mask + masked mean-pool, regression head, and the
+   TransformerModel fit/predict wrapper + coordinate-search driver are all
+   built and pass end-to-end fit/predict smoke tests. **Next:** run the sweep
+   and score vs the 0.5674 Ridge bar.
 7. ⬜ Understand ChemBERTa as a frozen feature extractor
 
 Scoring uses the contest package's `score_compounds` / `load_gene_filter` /
