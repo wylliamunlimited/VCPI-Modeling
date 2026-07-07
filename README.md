@@ -110,6 +110,7 @@ the full baseline == the contest's own per-gene-mean to 0.0).
 | MLP (2×512 ReLU), full-batch, lr=1e-3 | 0.6089 | −0.003 |
 | MLP (2×512 ReLU), mini-batch=500, lr=1e-3 | 0.6031 | −0.009 (−1.4%) |
 | **MLP (2×512 ReLU), grid-tuned: lr=1e-3, batch=128, wd=0** | **0.5685** | **−0.043 (−7.1%)** |
+| SMILES transformer (from scratch), tuned: d_model=256, 4 layers, 4 heads, lr=3e-4 | 0.5890 | −0.023 (−3.7%) |
 
 Chemistry beats the floor: a linear map from substructure fingerprints to
 expression predicts better than ignoring the molecule (Ridge). The optimum α
@@ -122,8 +123,28 @@ the floor. Clear patterns from the sweep: **weight decay only hurt** (every
 `wd>0` config scored worse), **smaller batches (128) edged out larger ones**, and
 the **higher learning rate (5e-3) started to degrade**. So the gap to Ridge
 closed not with more epochs but with the right lr/batch and no regularization.
-Next: beating Ridge meaningfully likely needs richer features or architecture,
-not just more tuning.
+
+The from-scratch **SMILES transformer lands at 0.5890** — it clears the floor
+(−3.7%) but **loses to Ridge/MLP** (0.5674/0.5685). This is the expected result,
+not a bug, and it's the most interesting finding so far:
+
+- **The signal is largely linear.** The MLP already told us this (it only tied
+  Ridge). A transformer's whole edge is learning nonlinear, context-dependent
+  features — wasted when structure→expression is mostly linear.
+- **Transformers are data-hungry; ~12,800 molecules is tiny.** From scratch, it
+  must *learn* chemistry from raw characters, while Morgan fingerprints hand-encode
+  substructure priors for free. There isn't enough data to learn a better
+  representation than the fingerprint already gives.
+- **Capacity was still helping monotonically** (d_model 128→256 and depth 1→4
+  both improved it), i.e. it's representation-**under**fitting, not overfitting —
+  which points to *more data / a pretrained encoder*, exactly the rung-7 argument.
+- **The coordinate search rides noise.** Re-running the *same* config gave 0.5983
+  then 0.6039 (a ~0.006 swing from init/dropout/shuffle), so the per-knob "winners"
+  are partly luck; 0.5890 is a real number but sits inside a ±0.005-ish band.
+
+Takeaway: a hand-built transformer on 13k SMILES *can't* out-feature a Morgan
+fingerprint. The way to actually beat Ridge is a **pretrained** SMILES encoder
+(ChemBERTa, rung 7) — transfer the chemistry knowledge the local data lacks.
 
 <details>
 <summary><b>Full MLP grid sweep</b> (wMSE; best = <b>0.5685</b>)</summary>
@@ -207,13 +228,15 @@ A difficulty ladder — each rung runnable, each teaches one concept.
 **Track B — attention from scratch**
 5. ✅ Hand-write self-attention (Q/K/V + softmax) on a toy tensor
    (`notebooks/attention.py` + `attention_explained.md`)
-6. 🔨 Char-level SMILES transformer, hand-written from scratch — char
-   tokenizer, multi-head attention (packed Q/K/V + head reshape), Add & Norm
-   encoder blocks, padding mask + masked mean-pool, regression head, and the
-   TransformerModel fit/predict wrapper + coordinate-search driver are all
-   built and pass end-to-end fit/predict smoke tests. **Next:** run the sweep
-   and score vs the 0.5674 Ridge bar.
-7. ⬜ Understand ChemBERTa as a frozen feature extractor
+6. ✅ Char-level SMILES transformer, hand-written from scratch (multi-head
+   attention, Add & Norm encoder blocks, padding mask + masked mean-pool, fit/
+   predict wrapper, coordinate-search driver) → **0.5890** tuned. Clears the
+   floor but loses to Ridge/MLP — the signal is largely linear and 13k SMILES
+   is too little to learn a better representation than a Morgan fingerprint.
+   Capacity kept helping (underfitting, not overfitting) → motivates rung 7.
+7. ⬜ ChemBERTa as a frozen feature extractor — transfer a *pretrained* SMILES
+   encoder (millions of molecules) to supply the chemistry knowledge 13k
+   compounds can't teach from scratch; the plan to actually beat Ridge.
 
 Scoring uses the contest package's `score_compounds` / `load_gene_filter` /
 `load_weights_matrix` (wrapped in `evaluation.py`); submissions are a parquet of
