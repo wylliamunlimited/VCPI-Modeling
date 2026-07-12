@@ -28,7 +28,7 @@ import numpy as np
 from sklearn.model_selection import train_test_split
 
 from vcpi_ml.expression import counts_to_expression
-from vcpi_ml.features import morgan_matrix
+from vcpi_ml.features import chemberta_matrix, morgan_matrix
 
 DATA = Path(__file__).resolve().parents[2] / "data" / "raw"
 
@@ -221,3 +221,38 @@ def load_token_split(
     X_train, mask_train = tokenize_smile_char(train_smiles, vocabs, max_len)
     X_val, mask_val = tokenize_smile_char(val_smiles, vocabs, max_len)
     return X_train, mask_train, Y_train, X_val, mask_val, Y_val, vocabs
+
+
+def load_chemberta_split(
+    genes: set[str] | None = None,
+    model_name: str = "seyonec/ChemBERTa-zinc-base-v1",
+    batch_size: int = 64,
+    max_len: int = 128,
+    n_val: int = 200,
+    seed: int = 0
+) -> tuple[np.ndarray, pd.DataFrame, np.ndarray, pd.DataFrame]:
+    """(X_train, Y_train, X_val, Y_val) for the ChemBERTa -> expression task (rung 7).
+
+    Identical shape/contract to load_fingerprint_split, but X is a frozen
+    pretrained-transformer embedding instead of a Morgan fingerprint — so a
+    driver can swap featurizers and compare like-for-like (same Ridge on top).
+    Builds the expression split, then embeds each side's SMILES in the *same row
+    order* as Y (reindex on Y.index, so X and Y can't desync). X is a numpy
+    (compounds x 768) matrix; Y stays a labelled DataFrame for the scorer.
+
+    Note: recomputes the embeddings on every call (no cache) — ~14k SMILES
+    through the transformer takes a few minutes. Fine for a one-shot run; add a
+    parquet cache here if you iterate on the driver a lot.
+    """
+    Y_train, Y_val = load_expression_split(genes, n_val, seed)
+    smiles = smiles_by_compound()
+    train_smiles, val_smiles = (
+        smiles.reindex(Y_train.index),
+        smiles.reindex(Y_val.index)
+    )
+
+    X_train, X_val = (
+        chemberta_matrix(train_smiles, model_name, batch_size, max_len),
+        chemberta_matrix(val_smiles, model_name, batch_size, max_len)
+    )
+    return X_train, Y_train, X_val, Y_val
