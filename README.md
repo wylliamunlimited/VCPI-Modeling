@@ -111,6 +111,9 @@ the full baseline == the contest's own per-gene-mean to 0.0).
 | MLP (2×512 ReLU), mini-batch=500, lr=1e-3 | 0.6031 | −0.009 (−1.4%) |
 | **MLP (2×512 ReLU), grid-tuned: lr=1e-3, batch=128, wd=0** | **0.5685** | **−0.043 (−7.1%)** |
 | SMILES transformer (from scratch), tuned: d_model=256, 4 layers, 4 heads, lr=3e-4 | 0.5890 | −0.023 (−3.7%) |
+| Ridge on frozen ChemBERTa embeddings, α=10 | 0.5812 | −0.031 |
+| **Ridge on frozen ChemBERTa embeddings, α=100** | **0.5794** | **−0.033 (−5.3%)** |
+| **MLP on frozen ChemBERTa embeddings, grid-tuned: lr=1e-3, batch=256, wd=0** | **0.5727** | **−0.039 (−6.4%)** |
 
 Chemistry beats the floor: a linear map from substructure fingerprints to
 expression predicts better than ignoring the molecule (Ridge). The optimum α
@@ -143,8 +146,42 @@ not a bug, and it's the most interesting finding so far:
   are partly luck; 0.5890 is a real number but sits inside a ±0.005-ish band.
 
 Takeaway: a hand-built transformer on 13k SMILES *can't* out-feature a Morgan
-fingerprint. The way to actually beat Ridge is a **pretrained** SMILES encoder
-(ChemBERTa, rung 7) — transfer the chemistry knowledge the local data lacks.
+fingerprint. The natural next test is a **pretrained** SMILES encoder (ChemBERTa,
+rung 7) — transfer the chemistry knowledge the local data lacks.
+
+**And the surprise: it still doesn't beat Morgan.** Frozen ChemBERTa embeddings
+(768-dim, mean-pooled, ZINC-pretrained) into the *same* Ridge land at **0.5794**
+(α=100, still improving) — better than the from-scratch transformer (0.5890) and
+well under the floor, but **above Morgan-Ridge's 0.5674**. So a transformer
+pretrained on ~millions of molecules loses to a hand-designed fingerprint here.
+Two honest reasons:
+
+- **The task is largely linear, and Morgan is *already* a great linear basis.**
+  Fingerprint bits are explicit substructure indicators — near-ideal features for
+  a linear model. ChemBERTa's dense embedding is optimized for masked-token
+  prediction, not for being linearly separable into expression, so Ridge extracts
+  less from it per dimension.
+- **Domain mismatch + frozen + mean-pool.** ChemBERTa-zinc was pretrained on ZINC
+  drug-like molecules (may not match this compound library), it's *frozen* (never
+  adapted to the task), and a plain mean-pool discards structure. The winning
+  pipelines don't use it alone — they **fuse** it with fingerprints and PCA the
+  target (see `AiBio/`); ChemBERTa *adds* signal on top of Morgan, it doesn't
+  replace it.
+
+Swapping Ridge for a **nonlinear MLP head on the same ChemBERTa embeddings**
+helps — a grid-tuned MLP reaches **0.5727** (`lr=1e-3, batch=256, wd=0`), beating
+ChemBERTa-Ridge's 0.5794. This is the *opposite* of the Morgan case (where the MLP
+only *tied* Ridge): the dense ChemBERTa embedding is **not** as linearly separable
+as fingerprint bits, so the nonlinearity actually earns its keep here. But 0.5727
+still lands just above Morgan-Ridge's 0.5674. The weight-decay pattern repeats
+hard — every `wd>0` config scored worse, several catastrophically (up to 0.85);
+`wd=0` wins everywhere, same as the fingerprint MLP.
+
+Net: on this data, **Morgan-Ridge (0.5674) is still the model to beat.** The
+from-scratch transformer, the pretrained encoder, and both linear/nonlinear heads
+on top of it all confirm the same lesson — engineered fingerprints are hard to top
+in a small-data, mostly-linear regime. Beating them likely needs *feature fusion*
+(Morgan + ChemBERTa) and *target PCA*, not either representation alone.
 
 <details>
 <summary><b>Full MLP grid sweep</b> (wMSE; best = <b>0.5685</b>)</summary>
@@ -183,6 +220,42 @@ hurt at this scale.
 
 </details>
 
+<details>
+<summary><b>Full ChemBERTa→MLP grid sweep</b> (wMSE; best = <b>0.5727</b>)</summary>
+
+MLP on frozen 768-dim ChemBERTa embeddings, same `(lr, epoch, batch, wd)` grid.
+Lower is better; the floor is 0.6119 and Morgan-Ridge is 0.5674.
+
+**lr = 1e-3**
+
+| batch | 1k, wd=0 | 1k, wd=1e-4 | 1k, wd=1e-3 | 2.5k, wd=0 | 2.5k, wd=1e-4 | 2.5k, wd=1e-3 |
+|---|---|---|---|---|---|---|
+| 128 | 0.5755 | 0.6576 | 0.6333 | 0.5903 | 0.5979 | 0.6526 |
+| 256 | **0.5727** | 0.6057 | 0.6548 | 0.5882 | 0.6013 | 0.6454 |
+| 512 | 0.5791 | 0.5997 | 0.6267 | 0.5812 | 0.5990 | 0.7926 |
+
+**lr = 3e-3**
+
+| batch | 1k, wd=0 | 1k, wd=1e-4 | 1k, wd=1e-3 | 2.5k, wd=0 | 2.5k, wd=1e-4 | 2.5k, wd=1e-3 |
+|---|---|---|---|---|---|---|
+| 128 | 0.5871 | 0.5927 | 0.6259 | 0.5797 | 0.6046 | 0.7973 |
+| 256 | 0.6030 | 0.6105 | 0.8468 | 0.5841 | 0.6017 | 0.6686 |
+| 512 | 0.5819 | 0.7144 | 0.6836 | 0.5828 | 0.6024 | 0.6798 |
+
+**lr = 5e-3**
+
+| batch | 1k, wd=0 | 1k, wd=1e-4 | 1k, wd=1e-3 | 2.5k, wd=0 | 2.5k, wd=1e-4 | 2.5k, wd=1e-3 |
+|---|---|---|---|---|---|---|
+| 128 | 0.5870 | 0.6056 | 0.6668 | 0.5861 | 0.6320 | 0.6549 |
+| 256 | 0.5861 | 0.6466 | 0.6438 | 0.5999 | 0.6012 | 0.6812 |
+| 512 | 0.5916 | 0.6178 | 0.7697 | 0.5947 | 0.6273 | 0.6412 |
+
+Same story as the fingerprint MLP: `wd=0` wins almost everywhere and `wd=1e-3` is
+worst in every block (up to 0.85/0.80). `lr=1e-3` with a small/mid batch and no
+weight decay is the sweet spot — best **0.5727** at `lr=1e-3, batch=256, wd=0`.
+
+</details>
+
 ## Repo layout
 
 ```
@@ -191,21 +264,23 @@ vcpi-ml/
 ├── src/vcpi_ml/
 │   ├── sqlshell.py         # remote SQL REPL for exploration         ✅
 │   ├── download.py         # data acquisition → data/raw/            ✅
-│   ├── data.py             # loaders + compound split + SMILES tokenizer ✅
+│   ├── data.py             # loaders + split + tokenizer + feature splits ✅
 │   ├── expression.py       # counts → log2(CPM+1) target Y           ✅
 │   ├── evaluation.py       # wide→long reshape + wMSE scorer wrapper  ✅
-│   ├── features.py         # SMILES → Morgan fingerprint X            ✅
+│   ├── features.py         # SMILES → Morgan fingerprint / ChemBERTa X ✅
 │   ├── device.py           # shared torch device (cuda→mps→cpu)       ✅
 │   ├── models/
 │   │   ├── mean.py         # per-gene-mean baseline (fit/predict)     ✅
 │   │   ├── ridge.py        # Morgan fingerprint → Ridge (fit/predict) ✅
 │   │   ├── mlp.py          # PyTorch MLP (fit/predict + train loop)   ✅
-│   │   └── smiles_transformer.py  # transformer + fit/predict wrapper      🔨
+│   │   └── smiles_transformer.py  # transformer + fit/predict wrapper      ✅
 │   └── experiments/
 │       ├── baseline.py     # driver: per-gene-mean baseline           ✅
 │       ├── ridge.py        # driver: Ridge (+ alpha sweep)            ✅
 │       ├── mlp.py          # driver: MLP (+ hyperparameter grid)      ✅
-│       └── smiles_transformer.py  # driver: transformer (coord. search) 🔨
+│       ├── smiles_transformer.py  # driver: transformer (coord. search) ✅
+│       ├── chemberta_ridge.py     # driver: ChemBERTa → Ridge          ✅
+│       └── chemberta_mlp.py       # driver: ChemBERTa → MLP            ✅
 ├── notebooks/
 │   ├── attention.py            # self-attention from scratch, toy tensor ✅
 │   └── attention_explained.md  # study notes: Q/K/V, dims, multi-head    ✅
@@ -234,10 +309,38 @@ A difficulty ladder — each rung runnable, each teaches one concept.
    floor but loses to Ridge/MLP — the signal is largely linear and 13k SMILES
    is too little to learn a better representation than a Morgan fingerprint.
    Capacity kept helping (underfitting, not overfitting) → motivates rung 7.
-7. ⬜ ChemBERTa as a frozen feature extractor — transfer a *pretrained* SMILES
-   encoder (millions of molecules) to supply the chemistry knowledge 13k
-   compounds can't teach from scratch; the plan to actually beat Ridge.
+7. ✅ ChemBERTa as a frozen feature extractor → Ridge **0.5794** / MLP **0.5727**.
+   A pretrained SMILES encoder (mean-pooled 768-dim embeddings) beats the
+   from-scratch transformer, and a nonlinear MLP head beats Ridge on it (the
+   dense embedding is less linearly separable than fingerprint bits) — but
+   both **still lose to Morgan-Ridge (0.5674)**. Frozen + mean-pool + domain
+   mismatch cap the gain; engineered fingerprints stay hard to top. Next
+   (optional): *fuse* Morgan + ChemBERTa and PCA the target, the AiBio approach.
 
 Scoring uses the contest package's `score_compounds` / `load_gene_filter` /
 `load_weights_matrix` (wrapped in `evaluation.py`); submissions are a parquet of
 `(compound, gene_id, predicted_expression)` rows.
+
+## Where it stands
+
+All seven rungs are built, run, and scored — from a per-gene-mean baseline up to
+hand-written multi-head attention and a pretrained ChemBERTa encoder. The
+consistent finding across four learned models:
+
+| approach | wMSE | vs the 0.6119 floor |
+|---|---|---|
+| **Ridge on Morgan fingerprints** | **0.5674** | **best** |
+| MLP on Morgan fingerprints | 0.5685 | ties Ridge |
+| MLP on frozen ChemBERTa | 0.5727 | clears floor, just below best |
+| Ridge on frozen ChemBERTa | 0.5794 | clears floor, below Ridge |
+| SMILES transformer (from scratch) | 0.5890 | clears floor, below Ridge |
+
+**Morgan-Ridge is the model to beat, and nothing here beats it.** Added nonlinear
+capacity (MLP), a from-scratch transformer, and a transformer pretrained on
+millions of molecules all clear the floor but land *above* 0.5674 — because the
+structure→expression signal is largely linear and a Morgan fingerprint is already
+a near-ideal linear basis in this small-data (~13k compound) regime. That's the
+project's thesis: **on this data, an engineered fingerprint + linear model is hard
+to top; capacity and pretraining only pay off with more data or by *fusing*
+representations** (Morgan + ChemBERTa) and compressing the target (PCA) — the
+direction a winning pipeline (`AiBio/`) takes.
