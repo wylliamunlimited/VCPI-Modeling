@@ -1,4 +1,17 @@
+"""chemberta_mlp.py — driver: transfer learning, ChemBERTa → MLP (rung 7).
 
+Same frozen-ChemBERTa featurizer as chemberta_ridge.py, but with a nonlinear
+head: reuses mlp.py's pipeline (the MLP infers n_in from the 768-dim embedding)
+and sweeps the same lr × epoch × batch × weight-decay grid. Tests whether a
+nonlinear model can pull more out of the pretrained embedding than Ridge did —
+though, as with fingerprints, the MLP tends to only tie its linear counterpart
+when the signal is largely linear.
+
+Embeddings/train tensors are built once, before the grid, so nothing reloads
+per config.
+
+    uv run python src/vcpi_ml/experiments/chemberta_mlp.py
+"""
 
 import numpy as np
 import pandas as pd
@@ -15,8 +28,9 @@ GRID = {
     "weight_decay": [0.0, 1e-4, 1e-3],
 }
 
-def main():
 
+def main():
+    """Embed all SMILES with frozen ChemBERTa once, convert train tensors, sweep the grid."""
     genes = set(load_gene_filter())
     X_train, Y_train, X_val, Y_val = load_chemberta_split(
         genes=genes
