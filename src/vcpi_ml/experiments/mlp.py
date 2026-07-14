@@ -47,7 +47,7 @@ def pipeline(
     """
     params = f"lr={lr}, epoch={epoch}, batch={batch_size}, wd={weight_decay}"
     print(f"===== Training MLP ({params}) =====")
-    model = MLPModel(lr=lr, weight_decay=weight_decay)
+    model = MLPModel(n_in=X_train.shape[1], lr=lr, weight_decay=weight_decay)
     model.fit(X=X_train, Y=Y_train, epoch=epoch, batch=batch_size)
 
     pred = model.predict(X=X_val)
