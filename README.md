@@ -344,3 +344,52 @@ project's thesis: **on this data, an engineered fingerprint + linear model is ha
 to top; capacity and pretraining only pay off with more data or by *fusing*
 representations** (Morgan + ChemBERTa) and compressing the target (PCA) — the
 direction a winning pipeline (`AiBio/`) takes.
+
+## What's next: from *building* models to *improving* them
+
+Rungs 1–7 climbed a **model ladder** — each rung a new architecture. Hitting
+"nothing beats Morgan-Ridge" taught the real lesson: **implementing the model is
+no longer the bottleneck; knowing *what a problem needs* is.** The next phase is a
+different skill — **diagnosis-driven improvement**. Instead of "try a fancier
+model," the loop is:
+
+> **measure where the error comes from → hypothesize *why* → design a targeted
+> intervention → verify it moved the number.**
+
+So far I mostly *skipped* the measure/hypothesize steps and jumped to bigger
+models. That's how you learn the zoo; now the goal is to learn to *aim* — to ask
+the right questions about the data and the errors, observe a property, and tune
+accordingly (do I actually need another dropout? a different activation? more
+data? a different loss?) rather than guessing.
+
+**Track C — diagnosis & principled improvement** (on the data already here)
+
+8. ⬜ **Noise ceiling** — how well is it even *possible* to do? The target is a
+   mean over noisy replicates, so there's an irreducible error floor. Estimate it
+   (hold out one replicate, predict from the rest). *Key question:* is 0.5674
+   already near the ceiling? If so, "nothing beats Ridge" isn't failure — it's
+   proof of being near the data's limit. **Highest-insight; start here.**
+9. ⬜ **Learning curve** — train on 25/50/75/100% of compounds, plot val wMSE vs.
+   size. Still dropping at 100% → *data-limited* (augment / get more data). Flat
+   tail → *feature-limited* (better features, not more rows). Settles the "is 13k
+   too little?" question with one plot instead of a guess.
+10. ⬜ **Error analysis** — *where* does the error concentrate? Which compounds /
+    genes are predicted worst, and do they cluster (unusual structures, few
+    replicates, low-expression noise)? Turns "it's 0.57" into "it fails on X,"
+    which points at a targeted fix.
+
+**The levers — chosen by what the diagnosis says, not by guessing:**
+
+| lever | reach for it when… |
+|---|---|
+| data enrichment (SMILES augmentation, more data) | learning curve still dropping → data-limited |
+| feature work (fusion, selection, target-PCA) | learning curve flat → feature-limited |
+| loss alignment (train on weighted-MSE directly) | error concentrated in high-weight genes |
+| ensembling | high run-to-run variance (saw a ~0.006 swing) |
+| architecture tweaks (dropout, activation, depth) | over/underfit gap says so — *last*, not first |
+| **nothing — accept the result** | noise ceiling ≈ current score |
+
+The meta-lesson: **you've been optimizing the model; the harder, more senior skill
+is optimizing your *understanding of the data and the error* — the model choice
+then falls out of that.** This repo's stubborn, honest 0.5674 is the perfect
+sandbox: a result that *demands* explanation.
